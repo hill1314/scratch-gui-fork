@@ -7,6 +7,7 @@ import LanguageMenu from './language-menu.jsx';
 import MenuBarMenu from './menu-bar-menu.jsx';
 import ThemeMenu from './theme-menu.jsx';
 import {MenuSection} from '../menu/menu.jsx';
+import SavePathSettings from './save-path-settings.jsx';
 
 import menuBarStyles from './menu-bar.css';
 import styles from './settings-menu.css';
@@ -48,6 +49,7 @@ const SettingsMenu = ({
             <MenuSection>
                 {canChangeLanguage && <LanguageMenu onRequestCloseSettings={onRequestClose} />}
                 {canChangeTheme && <ThemeMenu onRequestCloseSettings={onRequestClose} />}
+                <SavePathSettings />
             </MenuSection>
         </MenuBarMenu>
     </div>

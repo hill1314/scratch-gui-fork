@@ -28,6 +28,7 @@ import DeletionRestorer from '../../containers/deletion-restorer.jsx';
 import TurboMode from '../../containers/turbo-mode.jsx';
 import MenuBarHOC from '../../containers/menu-bar-hoc.jsx';
 import SettingsMenu from './settings-menu.jsx';
+import {DEFAULT_SAVE_PATH} from './save-path-settings.jsx';
 
 import {openTipsLibrary, openDebugModal} from '../../reducers/modals';
 import {setPlayer} from '../../reducers/mode';
@@ -107,6 +108,21 @@ const ariaMessages = defineMessages({
     }
 });
 
+// JARVIS 二次开发：把当前 Scratch 项目导出为 .sb3 并 POST 给网关，由网关写入本机目录。
+// localStorage 里的「项目保存路径」由 save-path-settings.jsx 维护。
+const LS_SAVE_PATH = 'jarvis.scratch.savePath';
+// 菜单项文案提到模块级常量，避免被生产构建的压缩步骤当作可丢弃文本节点移除。
+const SAVE_TO_LOCAL_LABEL = '保存项目到本机';
+
+function bytesToBase64 (bytes) {
+    let binary = '';
+    const chunkSize = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+    }
+    return btoa(binary);
+}
+
 const MenuBarItemTooltip = ({
     children,
     className,
@@ -184,6 +200,7 @@ class MenuBar extends React.Component {
             'handleClickSaveAsCopy',
             'handleClickSeeCommunity',
             'handleClickShare',
+            'handleSaveToLocal',
             'handleSetMode',
             'handleKeyPress',
             'handleRestoreOption',
@@ -244,6 +261,51 @@ class MenuBar extends React.Component {
                 waitForUpdate(false); // immediately transition to project page
             }
         }
+    }
+    handleSaveToLocal () {
+        this.props.onRequestCloseFile();
+        let savePath = '';
+        try {
+            savePath = (window.localStorage.getItem(LS_SAVE_PATH) || '').trim();
+        } catch (e) {
+            savePath = '';
+        }
+        if (!savePath) {
+            savePath = window.prompt(
+                '尚未设置「项目保存路径」。请先在顶部「设置 ⚙」里填写，或在此直接输入\n' +
+                '（必须是 /Users/hill 下的绝对路径，例如 ' + DEFAULT_SAVE_PATH + '）：',
+                DEFAULT_SAVE_PATH
+            );
+            if (!savePath) return;
+            savePath = savePath.trim();
+            try {
+                window.localStorage.setItem(LS_SAVE_PATH, savePath);
+            } catch (e) {
+                // 忽略不可写
+            }
+        }
+        const title = (this.props.projectTitle || 'untitled').trim() || 'untitled';
+        const filename = `${title.substring(0, 100)}.sb3`;
+        this.props.vm.saveProjectSb3()
+            .then(bytes => {
+                const b64 = bytesToBase64(bytes);
+                return fetch('/api/scratch/save', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({path: savePath, filename, data: b64})
+                });
+            })
+            .then(resp => resp.json())
+            .then(result => {
+                if (result && result.ok) {
+                    window.alert(`已保存到本机：\n${result.path}`);
+                } else {
+                    window.alert('保存失败：' + ((result && result.error) || '未知错误'));
+                }
+            })
+            .catch(err => {
+                window.alert('保存失败：' + (err && err.message ? err.message : err));
+            });
     }
     handleSetMode (mode) {
         return () => {
@@ -516,7 +578,10 @@ class MenuBar extends React.Component {
                                                     id="gui.menuBar.downloadToComputer"
                                                 />
                                             </MenuItem>
-                                        )}</SB3Downloader>
+                                        )}                                        </SB3Downloader>
+                                        <MenuItem onClick={this.handleSaveToLocal}>
+                                            {SAVE_TO_LOCAL_LABEL}
+                                        </MenuItem>
                                     </MenuSection>
                                 </MenuBarMenu>
                             </div>
