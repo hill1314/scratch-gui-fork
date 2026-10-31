@@ -49,6 +49,9 @@ const SettingsMenu = ({
             <MenuSection>
                 {canChangeLanguage && <LanguageMenu onRequestCloseSettings={onRequestClose} />}
                 {canChangeTheme && <ThemeMenu onRequestCloseSettings={onRequestClose} />}
+            </MenuSection>
+            {/* 项目保存路径单独一个分区：与上面的语言/主题拉开分隔线，避免挤在一起看不清 */}
+            <MenuSection>
                 <SavePathSettings />
             </MenuSection>
         </MenuBarMenu>

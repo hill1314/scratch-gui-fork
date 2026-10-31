@@ -4,6 +4,10 @@ import PropTypes from 'prop-types';
 // JARVIS 二次开发：Scratch「设置 ⚙」里的「项目保存路径」输入框。
 // 值存 localStorage（key 见下），保存项目时由 menu-bar.jsx 读取并随请求发给网关，
 // 网关把 .sb3 写入该目录。必须是 /Users/hill 下的绝对路径（网关侧会校验）。
+//
+// ⚠️ 布局约束：菜单容器 .menu 有 max-width: 260px、颜色为深底白字。
+//   这里所有尺寸都必须在这个宽度内自适应（width:100%），否则会撑破菜单、
+//   文字换行挤成一团。别再写 minWidth。
 export const SAVE_PATH_KEY = 'jarvis.scratch.savePath';
 export const DEFAULT_SAVE_PATH = '/Users/hill/ScratchProjects';
 
@@ -32,17 +36,16 @@ class SavePathSettings extends React.Component {
         return (
             <div
                 style={{
-                    padding: '10px 12px',
-                    minWidth: 280,
-                    boxSizing: 'border-box'
+                    padding: '8px 10px 10px',
+                    boxSizing: 'border-box',
+                    width: '100%',
+                    // 菜单是深色底，这里统一用白字，与 Language / Color Mode 行一致
+                    color: '#fff',
+                    fontSize: 12,
+                    fontWeight: 700
                 }}
             >
-                <div style={{
-                    fontWeight: 700,
-                    marginBottom: 6,
-                    color: '#575e75',
-                    fontSize: 13
-                }}>
+                <div style={{marginBottom: 6}}>
                     项目保存路径
                 </div>
                 <input
@@ -50,24 +53,31 @@ class SavePathSettings extends React.Component {
                     value={this.state.path}
                     onChange={this.handleChange}
                     placeholder={DEFAULT_SAVE_PATH}
+                    spellCheck={false}
                     style={{
+                        display: 'block',
                         width: '100%',
                         boxSizing: 'border-box',
-                        padding: '6px 8px',
-                        fontSize: 13,
-                        borderRadius: 6,
-                        border: '1px solid #d9d9d9',
-                        outline: 'none'
+                        padding: '5px 7px',
+                        fontSize: 12,
+                        fontFamily: 'inherit',
+                        borderRadius: 4,
+                        border: '1px solid rgba(0, 0, 0, .15)',
+                        outline: 'none',
+                        color: '#575e75',
+                        background: '#fff'
                     }}
                 />
                 <div style={{
-                    marginTop: 6,
-                    fontSize: 11,
-                    lineHeight: 1.4,
-                    color: '#9aa0b0'
+                    marginTop: 5,
+                    fontSize: 10,
+                    lineHeight: 1.35,
+                    fontWeight: 400,
+                    color: 'rgba(255, 255, 255, .78)',
+                    // 长路径提示不撑破 260px：允许在任意位置折行
+                    wordBreak: 'break-all'
                 }}>
-                    保存项目时写入此目录（须为 /Users/hill 下的绝对路径）。
-                    在「文件 ▸ 保存项目到本机」中生效。
+                    /Users/hill 下的绝对路径，用于「文件 ▸ 保存项目到本机」
                 </div>
             </div>
         );
