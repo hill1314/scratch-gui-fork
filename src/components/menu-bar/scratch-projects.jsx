@@ -31,7 +31,7 @@ const T_SAVING_BTN = '保存中…';
 const T_CANCEL = '取消';
 const T_LOADING_LIST = '读取项目列表…';
 const T_LOAD_FAIL = '读取失败：';
-const T_EMPTY_HINT = '统一项目目录还没有项目，先去「文件 ▸ 保存项目」创建一个吧。';
+const T_EMPTY_HINT = '统一项目目录还没有项目，先去「项目 ▸ 保存项目」创建一个吧。';
 const T_LOADING_FILE = '加载中…';
 const T_OPEN = '打开 ▸';
 const T_STORE_LOC = '统一存储位置：';
@@ -44,6 +44,8 @@ const T_RENAME_BTN = '确定';
 const T_RENAMING_BTN = '处理中…';
 const T_DELETE_CONFIRM_PREFIX = '确定要删除项目「';
 const T_DELETE_CONFIRM_SUFFIX = '」吗？\n\n删除后文件会移入统一目录下的 .trash 子目录，如需找回可从该目录取回。';
+// 新建项目后的默认项目名（顶栏徽标显示它，保存时会作为「项目名称」预填值）
+export const DEFAULT_PROJECT_NAME = '未命名';
 
 export const PROJECT_NAME_KEY = 'jarvis.scratch.projectName';
 
@@ -113,7 +115,7 @@ export class ProjectNameBadge extends React.Component {
         this.setState({name: getProjectName()});
     }
     render () {
-        const name = this.state.name || '未命名项目';
+        const name = this.state.name || DEFAULT_PROJECT_NAME;
         return (
             <div
                 style={{

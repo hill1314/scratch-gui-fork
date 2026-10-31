@@ -30,7 +30,9 @@ import {
     ProjectNameBadge,
     ProjectStoreModal,
     openSaveDialog,
-    openLoadDialog
+    openLoadDialog,
+    setProjectName,
+    DEFAULT_PROJECT_NAME
 } from './scratch-projects.jsx';
 
 import {openTipsLibrary, openDebugModal} from '../../reducers/modals';
@@ -226,6 +228,10 @@ class MenuBar extends React.Component {
         );
         this.props.onRequestCloseFile();
         if (readyToReplaceProject) {
+            // JARVIS 二次开发：顶栏项目名徽标（ProjectNameBadge）读的是 localStorage 里的
+            // 项目名，新建项目时必须显式重置，否则会残留上一个项目的名称。
+            // 上游 Scratch 的 projectTitle 与本徽标是两套数据，改这里不影响官方逻辑。
+            setProjectName(DEFAULT_PROJECT_NAME);
             this.props.onClickNew(this.props.canSave && this.props.canCreateNew);
         }
         this.props.onRequestCloseFile();

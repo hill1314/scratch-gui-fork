@@ -11,6 +11,12 @@ addLocaleData(localeData);
 //   2) gui.debugModal.* 整个「卡住了怎么办」弹窗（52 个键，标题+说明全是英文），
 //      上游 zh-cn 的键都在、值都还是英文，所以必须覆盖而不是新增。
 // 这里做一份本地覆盖，只补真正缺译的键，其它一律沿用上游翻译。
+// ⚠️ 这里分两类，语义不同，别混：
+//   ZH_CN_OVERRIDES      —— 「补译」：只在键缺失或值仍是英文原文时才覆盖，
+//                           避免盖掉上游后续改进的中文翻译（大部分 debugModal 词条属于这类）。
+//   ZH_CN_FORCED         —— 「强制改写」：产品上我们就是要用这套措辞，无论上游翻译成什么都要覆盖。
+// 早期把两者混在一起时，`文件→项目` 这类「上游已是中文、但我们要换说法」的条目会被
+// 「有汉字就不覆盖」的规则跳过，改了不生效。
 const ZH_CN_OVERRIDES = {
     'gui.menuBar.settings': '设置',
     'gui.menuBar.colorMode': '配色模式',
@@ -77,6 +83,15 @@ const ZH_CN_OVERRIDES = {
     'gui.debugModal.askForHelp.description2': '找一到三个人来试试你的代码——不同的人会有不同的视角和思路！'
 };
 
+// 产品措辞：无论上游翻译成什么都要覆盖
+const ZH_CN_FORCED = {
+    // 顶栏菜单叫「项目」而不沿用上游的「文件」：这里管理的是作品档案（新建/保存/打开），
+    // 不涉及文件系统操作，叫「文件」会和「导入项目文件」混淆。
+    'gui.menuBar.file': '项目',
+    // 上游 zh-cn 是「新作品」，统一改为「新建项目」，与「打开项目 / 保存项目」动宾一致。
+    'gui.menuBar.new': '新建项目'
+};
+
 const applyOverrides = messages => {
     const merged = Object.assign({}, messages);
     if (merged['zh-cn']) {
@@ -91,6 +106,10 @@ const applyOverrides = messages => {
             if (cur === undefined || cur === '' || !/[\u4e00-\u9fa5]/.test(cur)) {
                 zh[key] = ZH_CN_OVERRIDES[key];
             }
+        });
+        // 强制改写：不看上游当前值，直接覆盖（产品措辞由我们定）
+        Object.keys(ZH_CN_FORCED).forEach(key => {
+            zh[key] = ZH_CN_FORCED[key];
         });
     }
     return merged;

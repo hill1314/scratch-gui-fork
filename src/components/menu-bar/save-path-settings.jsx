@@ -6,7 +6,7 @@ import PropTypes from 'prop-types';
 // 2026-10-31 起保存改为「统一存储」：无论用哪个设备访问，项目都写入当前 Mac 的固定目录
 //   /Users/hill/ScratchProjects（网关 JARVIS_SCRATCH_SAVE_DIR，可按环境变量改）。
 // 因此这里不再让用户输入/浏览路径（那会破坏统一存储语义），只做只读展示 + 提示，
-// 真正的「查看列表 / 加载」由「文件 ▸ 打开项目」弹窗完成。
+// 真正的「查看列表 / 加载」由「项目 ▸ 打开项目」弹窗完成。
 export const SAVE_PATH_KEY = 'jarvis.scratch.savePath';
 export const DEFAULT_SAVE_PATH = '/Users/hill/ScratchProjects';
 
@@ -52,7 +52,7 @@ class SavePathSettings extends React.Component {
                 </div>
                 <div style={helpStyle}>
                     所有保存的项目都落在当前 Mac 的这个固定目录，与访问设备无关；
-                    可在「文件 ▸ 打开项目」中查看列表并加载。
+                    可在「项目 ▸ 打开项目」中查看列表并加载。
                 </div>
             </div>
         );
