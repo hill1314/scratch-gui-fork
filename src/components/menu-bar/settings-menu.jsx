@@ -14,7 +14,12 @@ import menuBarStyles from './menu-bar.css';
 import styles from './settings-menu.css';
 
 import dropdownCaret from './dropdown-caret.svg';
-import settingsIcon from './icon--settings.svg';
+// JARVIS 定制：顶栏入口图标由「齿轮(设置)」改为「问号(帮助)」，文案同步改为「帮助」。
+// 齿轮 icon--settings.svg 保留未删，日后要改回只需替换这一行 import。
+import settingsIcon from './icon--about.svg';
+
+// JARVIS 定制：菜单显示名（图标 + 文案都服务「帮助」语义）。
+const MENU_LABEL = '帮助';
 
 // JARVIS 定制开关：隐藏「语言」「配色」与「项目保存路径(即设置里那个 ScratchProjects 输入框)」。
 // 按需求全部关闭；日后要恢复，把对应常量改回 true 即可（组件与样式均未删除）。
@@ -40,11 +45,7 @@ const SettingsMenu = ({
             src={settingsIcon}
         />
         <span className={styles.dropdownLabel}>
-            <FormattedMessage
-                defaultMessage="Settings"
-                description="Settings menu"
-                id="gui.menuBar.settings"
-            />
+            {MENU_LABEL}
         </span>
         <img src={dropdownCaret} />
         <MenuBarMenu
