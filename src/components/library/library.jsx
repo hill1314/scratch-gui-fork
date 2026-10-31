@@ -6,6 +6,8 @@ import {defineMessages, injectIntl, intlShape} from 'react-intl';
 
 import LibraryItem from '../../containers/library-item.jsx';
 import Modal from '../../containers/modal.jsx';
+import Divider from '../divider/divider.jsx';
+import Filter from '../filter/filter.jsx';
 import TagButton from '../../containers/tag-button.jsx';
 import Spinner from '../spinner/spinner.jsx';
 import {CATEGORIES} from '../../../src/lib/libraries/decks/index.jsx';
@@ -13,6 +15,11 @@ import {CATEGORIES} from '../../../src/lib/libraries/decks/index.jsx';
 import styles from './library.css';
 
 const messages = defineMessages({
+    filterPlaceholder: {
+        id: 'gui.library.filterPlaceholder',
+        defaultMessage: 'Search',
+        description: 'Placeholder text for library search field'
+    },
     allTag: {
         id: 'gui.library.allTag',
         defaultMessage: 'All',
@@ -244,10 +251,22 @@ class LibraryComponent extends React.Component {
             >
                 {(this.props.filterable || this.props.tags) && (
                     <div className={styles.filterBar}>
-                        {/* 搜索输入框已去掉（JARVIS 二次开发）：角色/造型/声音库的搜索框
-                            占一行高度，平板上把可视区域压得太小，日常翻图比搜索更常用。
-                            注意 filterable 还控制着下面的分隔线，一起删掉避免留下孤立竖线；
-                            state.filterQuery 仍保留（默认空串），所以列表展示逻辑不受影响。 */}
+                        {this.props.filterable && (
+                            <Filter
+                                className={classNames(
+                                    styles.filterBarItem,
+                                    styles.filter
+                                )}
+                                filterQuery={this.state.filterQuery}
+                                inputClassName={styles.filterInput}
+                                placeholderText={this.props.intl.formatMessage(messages.filterPlaceholder)}
+                                onChange={this.handleFilterChange}
+                                onClear={this.handleFilterClear}
+                            />
+                        )}
+                        {this.props.filterable && this.props.tags && (
+                            <Divider className={classNames(styles.filterBarItem, styles.divider)} />
+                        )}
                         {this.props.tags &&
                             <div className={styles.tagWrapper}>
                                 {tagListPrefix.concat(this.props.tags).map((tagProps, id) => (
