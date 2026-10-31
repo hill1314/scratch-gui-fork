@@ -286,8 +286,25 @@ class MenuBar extends React.Component {
         }
         const title = (this.props.projectTitle || 'untitled').trim() || 'untitled';
         const filename = `${title.substring(0, 100)}.sb3`;
+        // ⚠️ vm.saveProjectSb3() 返回的是 Blob（不是 ArrayBuffer/Uint8Array），
+        // 上游 SB3Downloader 也是直接把它交给 downloadBlob。Blob 上没有 byteLength、
+        // 只有 size，必须先读成 ArrayBuffer 才能 base64。
         this.props.vm.saveProjectSb3()
-            .then(bytes => {
+            .then(content => {
+                if (content instanceof Blob) {
+                    return content.arrayBuffer().then(ab => ({bytes: new Uint8Array(ab), size: content.size}));
+                }
+                // 兼容老版本返回 ArrayBuffer / Uint8Array 的情况
+                if (content && content.buffer) {
+                    return {bytes: new Uint8Array(content.buffer, content.byteOffset, content.byteLength),
+                        size: content.byteLength};
+                }
+                return {bytes: new Uint8Array(0), size: 0};
+            })
+            .then(({bytes, size}) => {
+                if (!size) {
+                    throw new Error('当前项目内容为空，请先添加角色或积木再保存');
+                }
                 const b64 = bytesToBase64(bytes);
                 return fetch('/api/scratch/save', {
                     method: 'POST',
@@ -578,7 +595,7 @@ class MenuBar extends React.Component {
                                                     id="gui.menuBar.downloadToComputer"
                                                 />
                                             </MenuItem>
-                                        )}                                        </SB3Downloader>
+                                        )}</SB3Downloader>
                                         <MenuItem onClick={this.handleSaveToLocal}>
                                             {SAVE_TO_LOCAL_LABEL}
                                         </MenuItem>

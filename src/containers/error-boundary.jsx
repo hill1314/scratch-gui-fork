@@ -55,18 +55,34 @@ class ErrorBoundary extends React.Component {
 
     render () {
         if (this.state.error) {
-            if (recommendedBrowser()) {
-                return (
-                    <CrashMessageComponent
-                        onReload={this.handleReload}
-                    />
-                );
-            }
-            return (<BrowserModalComponent
-                error
-                isRtl={this.props.isRtl}
-                onBack={this.handleBack}
-            />);
+            // JARVIS 二次开发：把真实报错直接显示在崩溃页上，方便在没有控制台的设备（平板/手机）上排查。
+            const err = this.state.error;
+            const stack = (err && (err.stack || err.message)) || 'Unknown error';
+            const compStack = (this.state.errorInfo && this.state.errorInfo.componentStack) || '';
+            return (
+                <div style={{
+                    position: 'fixed', inset: 0, overflow: 'auto', zIndex: 99999,
+                    background: '#1b2838', color: '#ffd2d2',
+                    font: '12px/1.5 ui-monospace, Menlo, Consolas, monospace',
+                    padding: '20px', whiteSpace: 'pre-wrap', wordBreak: 'break-word'
+                }}>
+                    <div style={{color: '#fff', fontSize: 14, fontWeight: 700, marginBottom: 8}}>
+                        运行时报错（JARVIS 诊断）：{String(err && err.message || err)}
+                    </div>
+                    <div style={{marginBottom: 12}}>{String(stack)}</div>
+                    {compStack ? (
+                        <div style={{color: '#9fd0ff'}}>组件栈：{String(compStack)}</div>
+                    ) : null}
+                    <button
+                        onClick={this.handleReload}
+                        style={{
+                            marginTop: 16, padding: '8px 16px', borderRadius: 8,
+                            border: '1px solid #5a7', background: '#2b6', color: '#042',
+                            fontWeight: 700, cursor: 'pointer'
+                        }}
+                    >重新载入</button>
+                </div>
+            );
         }
         return this.props.children;
     }
