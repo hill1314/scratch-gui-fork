@@ -23,9 +23,6 @@ import ProjectTitleInput from './project-title-input.jsx';
 import AuthorInfo from './author-info.jsx';
 import AccountNav from '../../containers/account-nav.jsx';
 import LoginDropdown from './login-dropdown.jsx';
-import SB3Downloader from '../../containers/sb3-downloader.jsx';
-import DeletionRestorer from '../../containers/deletion-restorer.jsx';
-import TurboMode from '../../containers/turbo-mode.jsx';
 import MenuBarHOC from '../../containers/menu-bar-hoc.jsx';
 import SettingsMenu from './settings-menu.jsx';
 import {DEFAULT_SAVE_PATH} from './save-path-settings.jsx';
@@ -73,8 +70,6 @@ import {
     closeSettingsMenu
 } from '../../reducers/menus';
 
-import collectMetadata from '../../lib/collect-metadata';
-
 import styles from './menu-bar.css';
 
 import helpIcon from '../../lib/assets/icon--tutorials.svg';
@@ -84,7 +79,6 @@ import remixIcon from './icon--remix.svg';
 import dropdownCaret from './dropdown-caret.svg';
 import aboutIcon from './icon--about.svg';
 import fileIcon from './icon--file.svg';
-import editIcon from './icon--edit.svg';
 import debugIcon from '../debug-modal/icons/icon--debug.svg';
 
 import scratchLogo from './scratch-logo.svg';
@@ -202,10 +196,7 @@ class MenuBar extends React.Component {
             'handleClickShare',
             'handleSaveToLocal',
             'handleSetMode',
-            'handleKeyPress',
-            'handleRestoreOption',
-            'getSaveToComputerHandler',
-            'restoreOptionMessage'
+            'handleKeyPress'
         ]);
     }
     componentDidMount () {
@@ -354,56 +345,11 @@ class MenuBar extends React.Component {
             this.props.onSetTimeTravelMode(mode);
         };
     }
-    handleRestoreOption (restoreFun) {
-        return () => {
-            restoreFun();
-            this.props.onRequestCloseEdit();
-        };
-    }
     handleKeyPress (event) {
         const modifier = bowser.mac ? event.metaKey : event.ctrlKey;
         if (modifier && event.key === 's') {
             this.props.onClickSave();
             event.preventDefault();
-        }
-    }
-    getSaveToComputerHandler (downloadProjectCallback) {
-        return () => {
-            this.props.onRequestCloseFile();
-            downloadProjectCallback();
-            if (this.props.onProjectTelemetryEvent) {
-                const metadata = collectMetadata(this.props.vm, this.props.projectTitle, this.props.locale);
-                this.props.onProjectTelemetryEvent('projectDidSave', metadata);
-            }
-        };
-    }
-    restoreOptionMessage (deletedItem) {
-        switch (deletedItem) {
-        case 'Sprite':
-            return (<FormattedMessage
-                defaultMessage="Restore Sprite"
-                description="Menu bar item for restoring the last deleted sprite."
-                id="gui.menuBar.restoreSprite"
-            />);
-        case 'Sound':
-            return (<FormattedMessage
-                defaultMessage="Restore Sound"
-                description="Menu bar item for restoring the last deleted sound."
-                id="gui.menuBar.restoreSound"
-            />);
-        case 'Costume':
-            return (<FormattedMessage
-                defaultMessage="Restore Costume"
-                description="Menu bar item for restoring the last deleted costume."
-                id="gui.menuBar.restoreCostume"
-            />);
-        default: {
-            return (<FormattedMessage
-                defaultMessage="Restore"
-                description="Menu bar item for restoring the last deleted item in its disabled state." /* eslint-disable-line max-len */
-                id="gui.menuBar.restore"
-            />);
-        }
         }
     }
     buildAboutMenu (onClickAbout) {
@@ -584,18 +530,8 @@ class MenuBar extends React.Component {
                                         >
                                             {this.props.intl.formatMessage(sharedMessages.loadFromComputerTitle)}
                                         </MenuItem>
-                                        <SB3Downloader>{(className, downloadProjectCallback) => (
-                                            <MenuItem
-                                                className={className}
-                                                onClick={this.getSaveToComputerHandler(downloadProjectCallback)}
-                                            >
-                                                <FormattedMessage
-                                                    defaultMessage="Save to your computer"
-                                                    description="Menu bar item for downloading a project to your computer" // eslint-disable-line max-len
-                                                    id="gui.menuBar.downloadToComputer"
-                                                />
-                                            </MenuItem>
-                                        )}</SB3Downloader>
+                                        {/* 「保存到电脑」已去掉：离线版里它和「保存项目到本机」重复，
+                                            后者能直接落到可配置路径，保留后者即可。 */}
                                         <MenuItem onClick={this.handleSaveToLocal}>
                                             {SAVE_TO_LOCAL_LABEL}
                                         </MenuItem>
@@ -603,57 +539,6 @@ class MenuBar extends React.Component {
                                 </MenuBarMenu>
                             </div>
                         )}
-                        <div
-                            className={classNames(styles.menuBarItem, styles.hoverable, {
-                                [styles.active]: this.props.editMenuOpen
-                            })}
-                            onMouseUp={this.props.onClickEdit}
-                        >
-                            <img src={editIcon} />
-                            <span className={styles.collapsibleLabel}>
-                                <FormattedMessage
-                                    defaultMessage="Edit"
-                                    description="Text for edit dropdown menu"
-                                    id="gui.menuBar.edit"
-                                />
-                            </span>
-                            <img src={dropdownCaret} />
-                            <MenuBarMenu
-                                className={classNames(styles.menuBarMenu)}
-                                open={this.props.editMenuOpen}
-                                place={this.props.isRtl ? 'left' : 'right'}
-                                onRequestClose={this.props.onRequestCloseEdit}
-                            >
-                                <DeletionRestorer>{(handleRestore, {restorable, deletedItem}) => (
-                                    <MenuItem
-                                        className={classNames({[styles.disabled]: !restorable})}
-                                        onClick={this.handleRestoreOption(handleRestore)}
-                                    >
-                                        {this.restoreOptionMessage(deletedItem)}
-                                    </MenuItem>
-                                )}</DeletionRestorer>
-                                <MenuSection>
-                                    <TurboMode>{(toggleTurboMode, {turboMode}) => (
-                                        <MenuItem onClick={toggleTurboMode}>
-                                            {turboMode ? (
-                                                <FormattedMessage
-                                                    defaultMessage="Turn off Turbo Mode"
-                                                    description="Menu bar item for turning off turbo mode"
-                                                    id="gui.menuBar.turboModeOff"
-                                                />
-                                            ) : (
-                                                <FormattedMessage
-                                                    defaultMessage="Turn on Turbo Mode"
-                                                    description="Menu bar item for turning on turbo mode"
-                                                    id="gui.menuBar.turboModeOn"
-                                                />
-                                            )}
-                                        </MenuItem>
-                                    )}</TurboMode>
-                                </MenuSection>
-                            </MenuBarMenu>
-
-                        </div>
                         {this.props.isTotallyNormal && (
                             <div
                                 className={classNames(styles.menuBarItem, styles.hoverable, {
