@@ -22,7 +22,10 @@
        * 类名会被哈希成 index_jarvis-back_xxxx，而 index.ejs 里是裸类名，对不上。
        * 放在 body 直接子级、不塞进 React 树：不干扰 Scratch 的 flex 布局，升级冲突面也小。 */
       .jarvis-back {
-        position: fixed; top: 8px; left: 8px; z-index: 1000;
+        /* 原来在左上角(top:8;left:8)，会压住 Scratch 自己的 Logo，两个按钮叠在一起。
+         * 右上角顶栏被账号区(头像/用户名)占满，舞台头部控制条(绿旗/停止/全屏)又在 y:54 一行右侧，
+         * 所以浮在「舞台画布右上角」(y>92)：既不挡 Logo、不挡账号区、也不挡舞台控制条。 */
+        position: fixed; top: 96px; right: 12px; z-index: 1000;
         display: inline-flex; align-items: center; gap: 6px;
         padding: 6px 12px 6px 10px; border-radius: 999px;
         background: rgba(43, 52, 69, .92); color: #fff;
