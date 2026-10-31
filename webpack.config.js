@@ -76,6 +76,17 @@ const baseConfig = new ScratchWebpackConfigBuilder(
                 context: 'node_modules/scratch-vm/dist/web',
                 from: 'extension-worker.{js,js.map}',
                 noErrorOnMissing: true
+            },
+            {
+                // 二次开发改动：scratch-storage 是预构建好的 UMD 包，它的 fetch worker
+                // 在构建期被拆成独立 chunk（dist/web/chunks/fetch-worker.*.js），
+                // 但那些文件不在本工程入口图的依赖里，webpack 不会自动拷贝。
+                // 而它内部把公共路径写死成 "/"，运行时去请求根路径 /chunks/...，
+                // 缺了就是每次新建项目都报一次 404（不影响功能，但控制台很脏）。
+                // 这里把 worker chunk 补进 build/chunks/，由 sh/scratch-serve.js 直接提供。
+                context: 'node_modules/scratch-storage/dist/web/chunks',
+                from: '*.js',
+                to: 'chunks'
             }
         ]
     }));

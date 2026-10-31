@@ -23,6 +23,17 @@ import {
 import log from './log';
 import storage from './storage';
 
+/* 素材服务器（角色库 / 造型 / 声音）的默认地址。
+ *
+ * 二次开发改动：官方默认直连 https://assets.scratch.mit.edu，但国内网络经常连不上
+ * （实测 curl 直接返回 000，必须走代理才行），表现为「角色库里全是破图 / 造型加载不出来」。
+ * 所以这里改成以运行时开关为准：只要页面是经 JARVIS 网关打开（window.__SCRATCH_ASSET_HOST__
+ * 被 index.ejs 注入成同源的 /scratch-assets），就走网关的反向代理；否则仍用官方地址。
+ * 这样既不影响单独调试，也不用在构建期写死一个只在家里能用的地址。 */
+const DEFAULT_ASSET_HOST =
+    (typeof window !== 'undefined' && window.__SCRATCH_ASSET_HOST__) ||
+    'https://assets.scratch.mit.edu';
+
 /* Higher Order Component to provide behavior for loading projects by id. If
  * there's no id, the default project is loaded.
  * @param {React.Component} WrappedComponent component to receive projectData prop
@@ -135,7 +146,7 @@ const ProjectFetcherHOC = function (WrappedComponent) {
         setProjectId: PropTypes.func
     };
     ProjectFetcherComponent.defaultProps = {
-        assetHost: 'https://assets.scratch.mit.edu',
+        assetHost: DEFAULT_ASSET_HOST,
         projectHost: 'https://projects.scratch.mit.edu'
     };
 

@@ -16,8 +16,54 @@
     <meta name="google" value="notranslate">
     <link rel="shortcut icon" href="static/favicon.ico">
     <title><%= htmlWebpackPlugin.options.title %></title>
+    <style>
+      /* JARVIS 集成（二次开发）：返回家庭中枢的悬浮按钮。
+       * 注意必须写在这里（而不是 index.css）：index.css 走 CSS Modules，
+       * 类名会被哈希成 index_jarvis-back_xxxx，而 index.ejs 里是裸类名，对不上。
+       * 放在 body 直接子级、不塞进 React 树：不干扰 Scratch 的 flex 布局，升级冲突面也小。 */
+      .jarvis-back {
+        position: fixed; top: 8px; left: 8px; z-index: 1000;
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 6px 12px 6px 10px; border-radius: 999px;
+        background: rgba(43, 52, 69, .92); color: #fff;
+        font: 700 13px/1 -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+        text-decoration: none; box-shadow: 0 6px 18px rgba(20, 30, 60, .28);
+        opacity: .55; transition: opacity .15s, transform .15s;
+      }
+      .jarvis-back:hover { opacity: 1; transform: translateY(-1px); }
+      .jarvis-back:active { transform: scale(.97); }
+      @media (max-width: 1200px) {
+        .jarvis-back { padding: 5px 9px 5px 8px; font-size: 12px; }
+      }
+    </style>
+
   </head>
   <body>
+    <!-- JARVIS 集成（二次开发）：返回家庭中枢的悬浮入口。
+         只有加了 ?jarvis=1 才显示，这样直接打开 Scratch（纯开发调试）时不碍事。 -->
+    <a class="jarvis-back" id="jarvisBack" href="/" title="返回 JARVIS 家庭中枢" style="display:none">
+      <span aria-hidden="true">←</span><span>JARVIS</span>
+    </a>
+    <script>
+      (function () {
+        var q = new URLSearchParams(location.search);
+        if (q.get('jarvis') === '1') {
+          var el = document.getElementById('jarvisBack');
+          if (el) el.style.display = '';
+        }
+        /* 素材服务器改走同源代理。
+         *
+         * 官方的角色库/造型/声音都在 assets.scratch.mit.edu 上，国内直连会 timeout，
+         * 表现就是「角色库一片破图、造型加载不出来」。经 JARVIS 网关（8765）打开时，
+         * 由网关的 /scratch-assets/ 代为取回。这里必须在 React 应用挂载**之前**设好：
+         * project-fetcher-hoc.jsx 在构造 storage 时会读这个值决定默认 assetHost。
+         *
+         * 判断方式：URL 里带 jarvis=1，或者页面本身就不是 8601 直连（说明是反代进来的）。
+         * 单独 npm start 调试（localhost:8601）时仍用官方地址，行为与上游一致。 */
+        var viaJarvis = q.get('jarvis') === '1' || location.port !== '8601';
+        if (viaJarvis) window.__SCRATCH_ASSET_HOST__ = location.origin + '/scratch-assets';
+      })();
+    </script>
     <% if (htmlWebpackPlugin.options.gtm_id) { %>
       <!-- Google Tag Manager (noscript) -->
       <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=<%- htmlWebpackPlugin.options.gtm_id %><%= htmlWebpackPlugin.options.gtm_env_auth %>" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
