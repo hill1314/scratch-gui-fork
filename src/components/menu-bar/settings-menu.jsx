@@ -16,6 +16,12 @@ import styles from './settings-menu.css';
 import dropdownCaret from './dropdown-caret.svg';
 import settingsIcon from './icon--settings.svg';
 
+// JARVIS 定制开关：隐藏「语言」「配色」与「项目保存路径(即设置里那个 ScratchProjects 输入框)」。
+// 按需求全部关闭；日后要恢复，把对应常量改回 true 即可（组件与样式均未删除）。
+const SHOW_LANGUAGE = false;
+const SHOW_THEME = false;
+const SHOW_SAVE_PATH = true;
+
 const SettingsMenu = ({
     canChangeLanguage,
     canChangeTheme,
@@ -47,14 +53,16 @@ const SettingsMenu = ({
             place={isRtl ? 'left' : 'right'}
             onRequestClose={onRequestClose}
         >
-            <MenuSection>
-                {canChangeLanguage && <LanguageMenu onRequestCloseSettings={onRequestClose} />}
-                {canChangeTheme && <ThemeMenu onRequestCloseSettings={onRequestClose} />}
-            </MenuSection>
-            {/* 加速模式（原「编辑」菜单里的 Turbo Mode）。
-                「编辑」菜单只剩「恢复删除」+ 这一项，为精简顶栏已整个去掉，
-                把这唯一还有用的开关挪到「设置」里来，由 TurboMode 容器提供
-                toggle 与当前状态（它内部连的是 redux 的 vmStatus.turbo）。 */}
+            {SHOW_LANGUAGE && canChangeLanguage && (
+                <MenuSection>
+                    <LanguageMenu onRequestCloseSettings={onRequestClose} />
+                </MenuSection>
+            )}
+            {SHOW_THEME && canChangeTheme && (
+                <MenuSection>
+                    <ThemeMenu onRequestCloseSettings={onRequestClose} />
+                </MenuSection>
+            )}
             <MenuSection>
                 <TurboMode>{(toggleTurboMode, {turboMode}) => (
                     <MenuItem onClick={toggleTurboMode}>
@@ -74,10 +82,11 @@ const SettingsMenu = ({
                     </MenuItem>
                 )}</TurboMode>
             </MenuSection>
-            {/* 项目保存路径单独一个分区：与上面的语言/主题拉开分隔线，避免挤在一起看不清 */}
-            <MenuSection>
-                <SavePathSettings />
-            </MenuSection>
+            {SHOW_SAVE_PATH && (
+                <MenuSection>
+                    <SavePathSettings />
+                </MenuSection>
+            )}
         </MenuBarMenu>
     </div>
 );

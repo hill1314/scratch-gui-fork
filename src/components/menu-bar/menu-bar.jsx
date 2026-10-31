@@ -587,7 +587,7 @@ class MenuBar extends React.Component {
                             </div>
                         )}
                     </div>
-                    {this.props.canEditTitle ? (
+                    {false ? ( /* JARVIS: 隐藏舞台作品标题输入框（即设置里显示「Scratch作品」的那个框） */
                         <div className={classNames(styles.menuBarItem, styles.growable)}>
                             <MenuBarItemTooltip
                                 enable
