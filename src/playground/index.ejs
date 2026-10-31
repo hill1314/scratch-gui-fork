@@ -46,6 +46,65 @@
         /* 窄屏时顶栏文字更挤，按钮收紧并再让开一点 */
         .jarvis-back { top: 12px; right: 40px; padding: 4px 9px 4px 7px; font-size: 12px; }
       }
+
+      /* ===== JARVIS 集成（二次开发）：平板/窄屏自适应 =====
+       *
+       * 为什么需要单独一段：Scratch 官方 GUI 是桌面双栏布局，源码里写死了
+       *   .editor-wrapper { flex-basis: calc(1024px - 408px - ...); flex-shrink: 0; }
+       * 注释里也明说「GUI 最小显示宽度 1024px」。平板横屏（1024~1280 逻辑宽）
+       * 刚好卡在临界点，舞台被压得很小；更窄时因为 flex-shrink:0 不肯收缩，
+       * 舞台直接被挤出可视区、整页出现横向滚动。
+       *
+       * 这里用 CSS Modules 的**属性选择器**（[class*="editor-wrapper"]）来打补丁：
+       * 类名被哈希成 editor-wrapper_xxxx 之类，用半匹配才能稳定命中，
+       * 且不必改 React 组件、升级冲突面最小。
+       *
+       * 策略（横屏为主）：
+       *   1) 允许积木列收缩（flex-shrink:1）+ 去掉 1024 的硬下限；
+       *   2) 窄屏把工具箱/标签页宽度 250px → 180px，把横向空间让给舞台；
+       *   3) 顶栏精简：隐藏文件/编辑等文字标签，只留图标（官方已有同名规则，
+       *      但断点只在 1024，这里补齐到 1200 并加上 Logo 收紧）；
+       *   4) 彻底禁掉整页横向滚动（Scratch 内部各 Scroll 容器自己处理）。
+       */
+      @media (max-width: 1280px) {
+        /* 1) 让左侧积木列可以收缩，舞台列不再被顶出去 */
+        [class*="editor-wrapper"] {
+          flex-basis: 0 !important;
+          flex-grow: 1 !important;
+          flex-shrink: 1 !important;
+          min-width: 0 !important;
+        }
+        [class*="flex-wrapper"] { overflow-x: hidden !important; }
+        html, body { overflow-x: hidden !important; }
+
+        /* 2) 工具箱/标签页收窄，给舞台腾地方 */
+        [class*="tab-list"] { width: 180px !important; }
+
+        /* 3) 顶栏精简：窄屏只留图标不显示文字标签 */
+        [class*="collapsible-label"],
+        [class*="tutorials-label"],
+        [class*="debug-label"] { display: none !important; }
+
+        /* 顶栏各项更紧凑，避免挤成两行 */
+        [class*="menu-bar-item"] { padding: 0 0.15rem !important; }
+        [class*="scratch-logo"] { height: 1.25rem !important; }
+      }
+
+      /* 更窄（竖屏平板 / 小尺寸横屏）：进一步压缩侧栏与舞台内边距 */
+      @media (max-width: 1024px) {
+        [class*="tab-list"] { width: 150px !important; }
+        [class*="stage-and-target-wrapper"] {
+          padding-left: 0.25rem !important;
+          padding-right: 0.25rem !important;
+        }
+        [class*="sprite-selector"] { min-width: 0 !important; }
+      }
+
+      /* 触屏：放大可点区域，避免手指误触（鼠标端不受影响） */
+      @media (pointer: coarse) {
+        [class*="menu-bar-item"] { min-height: 2.25rem; }
+        .jarvis-back { padding: 7px 13px 7px 11px; font-size: 14px; }
+      }
     </style>
 
   </head>
