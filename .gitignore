@@ -26,3 +26,9 @@ npm-*
 
 # for act
 .secrets
+
+# ===== 本地二开（JARVIS 接入）追加 =====
+# 依赖修复脚本的临时暂存（sh/fix-node-modules.js 生成）
+/.npm_broken/
+# 日志
+*.log

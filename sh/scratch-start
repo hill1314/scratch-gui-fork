@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+# scratch-gui 本地静态服务：把 build/ 目录按静态站点提供在 127.0.0.1:8601
+#
+# 为什么不用 `npm start`（webpack serve）：
+#   - dev server 每次访问都要编译，占内存大、首屏慢，家里只是「用」不是「天天改」
+#   - dev server 是内存文件系统，进程重启即丢；build/ 是落盘产物，起停更快更稳
+# 开发时想热更新，直接 `npm start`（默认也是 8601，本脚本检测到端口已占用会直接退出）。
+#
+# 用法：
+#   ./sh/scratch-start            后台启动（幂等：已在跑则只打印状态）
+#   ./sh/scratch-start status     查看状态
+#   ./sh/scratch-start stop       停止
+#   ./sh/scratch-start fg         前台运行（看日志）
+set -e
+cd "$(dirname "$0")/.."
+ROOT="$(pwd)"
+
+PORT="${SCRATCH_PORT:-8601}"
+PIDFILE="/tmp/jarvis-scratch-${PORT}.pid"
+LOG="/tmp/jarvis-scratch-${PORT}.log"
+ENTRY="build/index.html"
+
+port_busy() { lsof -nP -iTCP@"127.0.0.1":"${PORT}" -sTCP:LISTEN >/dev/null 2>&1; }
+
+do_status() {
+  if port_busy; then
+    echo "scratch 服务运行中：http://127.0.0.1:${PORT}  (pid $(lsof -nP -iTCP@"127.0.0.1":"${PORT}" -sTCP:LISTEN -t | head -1))"
+  else
+    echo "scratch 服务未运行"
+  fi
+}
+
+do_stop() {
+  local pid
+  pid="$(cat "${PIDFILE}" 2>/dev/null || true)"
+  if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+    kill "$pid" 2>/dev/null || true
+    echo "已停止 scratch 服务（pid ${pid}）"
+  fi
+  rm -f "${PIDFILE}"
+  # 兜底：只结束监听本端口的进程
+  pid="$(lsof -nP -iTCP@"127.0.0.1":"${PORT}" -sTCP:LISTEN -t 2>/dev/null | head -1 || true)"
+  if [ -n "$pid" ]; then
+    kill "$pid" 2>/dev/null || true
+    echo "已清理残留进程（pid ${pid}）"
+  fi
+}
+
+serve() {
+  exec node "${ROOT}/sh/scratch-serve.js" "${ROOT}/build" "${PORT}"
+}
+
+case "${1:-start}" in
+  status) do_status ;;
+  stop)   do_stop ;;
+  fg)     serve ;;
+  start)
+    if port_busy; then
+      echo "端口 ${PORT} 已被占用（可能 npm start 在跑），直接复用。"
+      do_status
+      exit 0
+    fi
+    if [ ! -f "${ENTRY}" ]; then
+      echo "没有构建产物 ${ROOT}/${ENTRY}，正在自动构建（首次约 1 分钟）…"
+      NODE_OPTIONS=--max-old-space-size=4096 node "${ROOT}/node_modules/webpack/bin/webpack.js" \
+        --mode production >>"${LOG}" 2>&1 || {
+        echo "构建失败，详见 ${LOG} 或手动执行 npm run build" >&2
+        exit 1
+      }
+    fi
+    # setsid/double-fork：保证脚本退出后 node 仍在（网关用 Popen 拉起本脚本）
+    node "${ROOT}/sh/scratch-serve.js" "${ROOT}/build" "${PORT}" >>"${LOG}" 2>&1 &
+    echo $! >"${PIDFILE}"
+    for _ in $(seq 1 24); do
+      if port_busy; then
+        echo "scratch 服务已启动：http://127.0.0.1:${PORT}  (pid $(cat "${PIDFILE}"))"
+        exit 0
+      fi
+      sleep 0.25
+    done
+    echo "启动超时，日志：${LOG}" >&2
+    exit 1
+    ;;
+  *) echo "用法: $0 {start|stop|status|fg}" >&2; exit 1 ;;
+esac
