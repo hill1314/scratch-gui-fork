@@ -438,7 +438,14 @@ export default function (vm, useCatBlocks) {
     // 这样不碰 node_modules 里的包，npm install 不会冲掉。
     // ---------------------------------------------------------------------
     const JARVIS_CUT_PASTE = true;
-    if (JARVIS_CUT_PASTE && ScratchBlocks.BlockSvg && ScratchBlocks.ContextMenu) {
+    // ⚠️ 幂等保护：本文件被 containers/blocks.jsx 在 constructor 和 componentDidMount
+    // 里各调用一次（VMScratchBlocks 会重新 require 并重跑本段安装逻辑）。
+    // 原实现每次都包一层 showContextMenu_ → 右键菜单里出现两份「剪切」两份「粘贴」。
+    // 用原型上的标记确保全局只安装一次。
+    const CUT_PASTE_INSTALLED = '__jarvisCutPasteInstalled';
+    if (JARVIS_CUT_PASTE && ScratchBlocks.BlockSvg && ScratchBlocks.ContextMenu &&
+        !ScratchBlocks.BlockSvg[CUT_PASTE_INSTALLED]) {
+        ScratchBlocks.BlockSvg[CUT_PASTE_INSTALLED] = true;
         const CLIPBOARD_KEY = '__jarvisBlockClipboard';
         // 剪贴板：{ xml: Element, count: number, ts: number }
         ScratchBlocks[CLIPBOARD_KEY] = null;
