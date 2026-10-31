@@ -355,5 +355,69 @@ export default function (vm, useCatBlocks) {
         return true;
     };
 
+    // ---------------------------------------------------------------------
+    // JARVIS 定制：放宽积木连接吸附半径，改善嵌套块（「如果」里的条件、
+    // 「或/与」前后的判断等）的拖拽插入体验。
+    //
+    // 背景：scratch-blocks 默认 SNAP_RADIUS=48 / CONNECTING_SNAP_RADIUS=68。
+    // 布尔槽和 C 形块内部的连接点很小、又常被相邻积木遮挡，鼠标要精确凑近才
+    // 能连上；手指（触屏）更是几乎对不准。这里按输入设备分档放大吸附半径：
+    //   - SNAP_RADIUS：开始寻找最近连接点的半径（越大越容易"吸"上）
+    //   - CONNECTING_SNAP_RADIUS：已有连接点高亮后继续允许吸附的半径
+    //     （这是嵌套块插入是否顺畅的关键，默认只比 SNAP_RADIUS 大 20）
+    //   - DRAG_RADIUS：移动多少像素才算开始拖拽（触屏防抖，避免误拖）
+    //   - FLYOUT_DRAG_RADIUS：从左侧积木区拖出的启动阈值
+    //   - CURRENT_CONNECTION_PREFERENCE：已连点上"粘住"的偏好，触屏下略增
+    //     防止刚连上又跳到旁边的槽
+    //
+    // 仅在运行时覆盖常量，不修改 node_modules 里的 scratch-blocks 包，
+    // 因此 npm install 不会冲掉；如需关闭，把 JARVIS_BLOCK_SNAP_TUNING
+    // 置为 false 即可回到上游默认手感。
+    // ---------------------------------------------------------------------
+    const JARVIS_BLOCK_SNAP_TUNING = true;
+    if (JARVIS_BLOCK_SNAP_TUNING) {
+        // 触屏判定：优先用 media query（和 index.ejs 里的 pointer:coarse 一致），
+        // 无 matchMedia 时退化为 'ontouchstart' 检测。
+        let isCoarsePointer = false;
+        try {
+            isCoarsePointer = typeof window !== 'undefined' &&
+                typeof window.matchMedia === 'function' &&
+                window.matchMedia('(pointer: coarse)').matches;
+            if (!isCoarsePointer && typeof window !== 'undefined' && 'ontouchstart' in window) {
+                isCoarsePointer = (navigator.maxTouchPoints || 0) > 0;
+            }
+        } catch (e) {
+            isCoarsePointer = false;
+        }
+
+        const tuning = isCoarsePointer ?
+            {
+                snapRadius: 80,
+                connectingSnapRadius: 110,
+                dragRadius: 8,
+                flyoutDragRadius: 14,
+                currentConnectionPreference: 28
+            } :
+            {
+                snapRadius: 60,
+                connectingSnapRadius: 85,
+                dragRadius: 5,
+                flyoutDragRadius: 10,
+                currentConnectionPreference: 20
+            };
+
+        ScratchBlocks.SNAP_RADIUS = tuning.snapRadius;
+        ScratchBlocks.CONNECTING_SNAP_RADIUS = tuning.connectingSnapRadius;
+        ScratchBlocks.DRAG_RADIUS = tuning.dragRadius;
+        ScratchBlocks.FLYOUT_DRAG_RADIUS = tuning.flyoutDragRadius;
+        ScratchBlocks.CURRENT_CONNECTION_PREFERENCE = tuning.currentConnectionPreference;
+
+        // 便于在控制台核对实际生效值
+        ScratchBlocks.jarvisSnapTuning = {
+            coarsePointer: isCoarsePointer,
+            values: tuning
+        };
+    }
+
     return ScratchBlocks;
 }
