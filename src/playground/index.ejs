@@ -22,21 +22,29 @@
        * 类名会被哈希成 index_jarvis-back_xxxx，而 index.ejs 里是裸类名，对不上。
        * 放在 body 直接子级、不塞进 React 树：不干扰 Scratch 的 flex 布局，升级冲突面也小。 */
       .jarvis-back {
-        /* 原来在左上角(top:8;left:8)，会压住 Scratch 自己的 Logo，两个按钮叠在一起。
-         * 右上角顶栏被账号区(头像/用户名)占满，舞台头部控制条(绿旗/停止/全屏)又在 y:54 一行右侧，
-         * 所以浮在「舞台画布右上角」(y>92)：既不挡 Logo、不挡账号区、也不挡舞台控制条。 */
-        position: fixed; top: 96px; right: 12px; z-index: 1000;
+        /* 位置演进：
+         * 1) 最初在左上角(top:8;left:8) → 压住 Scratch 自己的 Logo，两个按钮叠在一起。
+         * 2) 改浮到「舞台画布右上角」(top:96) → 不挡 Logo/账号区/舞台控制条，但悬在画布上，
+         *    视觉上像块补丁，也遮舞台内容。
+         * 3) 现在移到「顶栏内右侧」：顶栏高 48px（$menu-bar-height: 3rem），按钮高 25px，
+         *    垂直居中 → top 取 11px。右侧账号区(account-info-group)只占最右 32px，
+         *    right 留 48px 正好让开它，不与任何顶栏元素重叠。
+         *    顶栏是 position:relative + z-index:491，按钮 fixed + z-index:1000 可覆盖在上层。 */
+        position: fixed; top: 11px; right: 48px; z-index: 1000;
         display: inline-flex; align-items: center; gap: 6px;
-        padding: 6px 12px 6px 10px; border-radius: 999px;
-        background: rgba(43, 52, 69, .92); color: #fff;
+        /* 落在紫色顶栏上，用半透明白底 + 深色字，比原来的深色块更协调，也不抢焦点 */
+        padding: 5px 11px 5px 9px; border-radius: 999px;
+        background: rgba(255, 255, 255, .18); color: #fff;
+        border: 1px solid rgba(255, 255, 255, .34);
         font: 700 13px/1 -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
-        text-decoration: none; box-shadow: 0 6px 18px rgba(20, 30, 60, .28);
-        opacity: .55; transition: opacity .15s, transform .15s;
+        text-decoration: none;
+        opacity: .82; transition: opacity .15s, background .15s, transform .15s;
       }
-      .jarvis-back:hover { opacity: 1; transform: translateY(-1px); }
+      .jarvis-back:hover { opacity: 1; background: rgba(255, 255, 255, .3); transform: translateY(-1px); }
       .jarvis-back:active { transform: scale(.97); }
       @media (max-width: 1200px) {
-        .jarvis-back { padding: 5px 9px 5px 8px; font-size: 12px; }
+        /* 窄屏时顶栏文字更挤，按钮收紧并再让开一点 */
+        .jarvis-back { top: 12px; right: 40px; padding: 4px 9px 4px 7px; font-size: 12px; }
       }
     </style>
 
