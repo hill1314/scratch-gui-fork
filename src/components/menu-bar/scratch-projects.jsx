@@ -35,6 +35,15 @@ const T_EMPTY_HINT = '统一项目目录还没有项目，先去「文件 ▸ �
 const T_LOADING_FILE = '加载中…';
 const T_OPEN = '打开 ▸';
 const T_STORE_LOC = '统一存储位置：';
+// 项目列表行的操作（删除 / 重命名）
+const T_RENAME = '重命名';
+const T_DELETE = '删除';
+const T_RENAME_TITLE = '重命名项目';
+const T_RENAME_LABEL = '新的项目名称';
+const T_RENAME_BTN = '确定';
+const T_RENAMING_BTN = '处理中…';
+const T_DELETE_CONFIRM_PREFIX = '确定要删除项目「';
+const T_DELETE_CONFIRM_SUFFIX = '」吗？\n\n删除后文件会移入统一目录下的 .trash 子目录，如需找回可从该目录取回。';
 
 export const PROJECT_NAME_KEY = 'jarvis.scratch.projectName';
 
@@ -145,7 +154,10 @@ export class ProjectStoreModal extends React.Component {
             root: '',
             listError: null,
             loadingList: false,
-            loadingFile: null    // 正在加载的项目名
+            loadingFile: null,   // 正在加载的项目名
+            renamingFile: null,  // 正在重命名的项目文件名（null 表示未处于重命名）
+            renameValue: '',     // 重命名输入框内容
+            rowBusy: null        // 正在删除/重命名中的项目文件名
         };
         this.openSave = this.openSave.bind(this);
         this.openLoad = this.openLoad.bind(this);
@@ -153,6 +165,12 @@ export class ProjectStoreModal extends React.Component {
         this.onName = this.onName.bind(this);
         this.doSave = this.doSave.bind(this);
         this.doLoad = this.doLoad.bind(this);
+        this.refreshList = this.refreshList.bind(this);
+        this.startRename = this.startRename.bind(this);
+        this.cancelRename = this.cancelRename.bind(this);
+        this.onRenameInput = this.onRenameInput.bind(this);
+        this.doRename = this.doRename.bind(this);
+        this.doDelete = this.doDelete.bind(this);
     }
     componentDidMount () {
         window.addEventListener('jarvis-open-save', this.openSave);
@@ -168,16 +186,22 @@ export class ProjectStoreModal extends React.Component {
     openLoad () {
         this.setState({
             mode: 'load', error: null, listError: null,
-            loadingList: true, projects: [], root: ''
+            loadingList: true, projects: [], root: '',
+            renamingFile: null, rowBusy: null
         });
-        fetch('/api/scratch/projects', {credentials: 'same-origin'})
+        this.refreshList();
+    }
+    // 重新拉取项目列表（删除/重命名后刷新用，不重置弹窗其余状态）
+    refreshList () {
+        return fetch('/api/scratch/projects', {credentials: 'same-origin'})
             .then(r => r.json())
             .then(res => {
                 if (res && res.ok) {
                     this.setState({
                         projects: res.projects || [],
                         root: res.root || '',
-                        loadingList: false
+                        loadingList: false,
+                        listError: null
                     });
                 } else {
                     this.setState({
@@ -271,8 +295,79 @@ export class ProjectStoreModal extends React.Component {
                 listError: (err && err.message) || String(err)
             }));
     }
+    // ---------- 项目重命名 ----------
+    startRename (p) {
+        this.setState({renamingFile: p.file, renameValue: p.name, listError: null});
+    }
+    cancelRename () {
+        this.setState({renamingFile: null, renameValue: ''});
+    }
+    onRenameInput (e) {
+        this.setState({renameValue: e.target.value});
+    }
+    doRename (p) {
+        const newName = (this.state.renameValue || '').trim();
+        if (!newName) {
+            this.setState({listError: '新项目名称不能为空'});
+            return;
+        }
+        if (newName === p.name) {
+            this.cancelRename();
+            return;
+        }
+        this.setState({rowBusy: p.file, listError: null});
+        fetch('/api/scratch/rename', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({file: p.file, newName: newName})
+        })
+            .then(r => r.json().then(res => {
+                if (!r.ok || !res || !res.ok) {
+                    throw new Error((res && res.error) || ('重命名失败（HTTP ' + r.status + '）'));
+                }
+                return res;
+            }))
+            .then(res => {
+                // 若重命名的正是当前打开的项目，同步更新顶栏徽标
+                if (getProjectName() === p.name) {
+                    setProjectName(res.name);
+                }
+                this.setState({rowBusy: null, renamingFile: null, renameValue: ''});
+                return this.refreshList();
+            })
+            .catch(err => this.setState({
+                rowBusy: null,
+                listError: (err && err.message) || String(err)
+            }));
+    }
+    // ---------- 项目删除 ----------
+    doDelete (p) {
+        if (!window.confirm(T_DELETE_CONFIRM_PREFIX + p.name + T_DELETE_CONFIRM_SUFFIX)) {
+            return;
+        }
+        this.setState({rowBusy: p.file, listError: null});
+        fetch('/api/scratch/delete', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({file: p.file})
+        })
+            .then(r => r.json().then(res => {
+                if (!r.ok || !res || !res.ok) {
+                    throw new Error((res && res.error) || ('删除失败（HTTP ' + r.status + '）'));
+                }
+                return res;
+            }))
+            .then(() => {
+                this.setState({rowBusy: null});
+                return this.refreshList();
+            })
+            .catch(err => this.setState({
+                rowBusy: null,
+                listError: (err && err.message) || String(err)
+            }));
+    }
     render () {
-        if (!this.state.mode) return null;
+            if (!this.state.mode) return null;
         const isSave = this.state.mode === 'save';
         const overlay = {
             position: 'fixed', left: 0, top: 0, right: 0, bottom: 0,
@@ -343,43 +438,142 @@ export class ProjectStoreModal extends React.Component {
                                 <div style={{fontSize: 13, color: '#969da5'}}>{T_EMPTY_HINT}</div>
                             )}
                             <div style={{marginTop: 8}}>
-                                {this.state.projects.map(p => (
-                                    <div
-                                        key={p.file}
-                                        onClick={() => this.doLoad(p.file, p.name)}
-                                        style={{
-                                            display: 'flex', alignItems: 'center',
-                                            justifyContent: 'space-between', gap: 10,
-                                            padding: '10px 12px', marginBottom: 6,
-                                            borderRadius: 6, border: '1px solid #e5e7eb',
-                                            cursor: 'pointer', background: '#fafbfc'
-                                        }}
-                                        onMouseEnter={e => { e.currentTarget.style.background = '#f0f4ff'; }}
-                                        onMouseLeave={e => { e.currentTarget.style.background = '#fafbfc'; }}
-                                    >
-                                        <div style={{minWidth: 0}}>
+                                {this.state.projects.map(p => {
+                                    const isRenaming = this.state.renamingFile === p.file;
+                                    const isRowBusy = this.state.rowBusy === p.file;
+                                    if (isRenaming) {
+                                        // 重命名态：整行换成输入框 + 确定/取消，避免误触打开
+                                        return (
                                             <div
+                                                key={p.file}
                                                 style={{
-                                                    fontSize: 14, fontWeight: 600,
-                                                    whiteSpace: 'nowrap', overflow: 'hidden',
-                                                    textOverflow: 'ellipsis'
+                                                    display: 'flex', alignItems: 'center', gap: 6,
+                                                    padding: '8px 10px', marginBottom: 6,
+                                                    borderRadius: 6, border: '1px solid #4c97ff',
+                                                    background: '#f0f4ff'
                                                 }}
                                             >
-                                                {p.name}
+                                                <input
+                                                    autoFocus
+                                                    type="text"
+                                                    value={this.state.renameValue}
+                                                    onChange={this.onRenameInput}
+                                                    placeholder={T_RENAME_LABEL}
+                                                    spellCheck={false}
+                                                    onKeyDown={e => {
+                                                        if (e.key === 'Enter') this.doRename(p);
+                                                        if (e.key === 'Escape') this.cancelRename();
+                                                    }}
+                                                    style={{
+                                                        flex: 1, minWidth: 0, boxSizing: 'border-box',
+                                                        padding: '6px 8px', fontSize: 13,
+                                                        fontFamily: 'inherit', borderRadius: 5,
+                                                        border: '1px solid #c9cdd4', outline: 'none'
+                                                    }}
+                                                />
+                                                <button
+                                                    type="button"
+                                                    disabled={isRowBusy}
+                                                    onClick={() => this.doRename(p)}
+                                                    style={{
+                                                        padding: '6px 12px', fontSize: 12,
+                                                        fontWeight: 700, borderRadius: 5,
+                                                        border: 'none', whiteSpace: 'nowrap',
+                                                        background: isRowBusy ? '#a9c7ff' : '#4c97ff',
+                                                        color: '#fff',
+                                                        cursor: isRowBusy ? 'default' : 'pointer'
+                                                    }}
+                                                >
+                                                    {isRowBusy ? T_RENAMING_BTN : T_RENAME_BTN}
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={this.cancelRename}
+                                                    style={{
+                                                        padding: '6px 12px', fontSize: 12,
+                                                        borderRadius: 5, whiteSpace: 'nowrap',
+                                                        border: '1px solid #c9cdd4', background: '#fff',
+                                                        color: '#575e75', cursor: 'pointer'
+                                                    }}
+                                                >
+                                                    {T_CANCEL}
+                                                </button>
                                             </div>
-                                            <div style={{fontSize: 11, color: '#969da5'}}>
-                                                {fmtSize(p.size)} · {fmtTime(p.mtime)}
+                                        );
+                                    }
+                                    return (
+                                        <div
+                                            key={p.file}
+                                            onClick={() => this.doLoad(p.file, p.name)}
+                                            style={{
+                                                display: 'flex', alignItems: 'center',
+                                                justifyContent: 'space-between', gap: 10,
+                                                padding: '10px 12px', marginBottom: 6,
+                                                borderRadius: 6, border: '1px solid #e5e7eb',
+                                                cursor: 'pointer', background: '#fafbfc'
+                                            }}
+                                            onMouseEnter={e => { e.currentTarget.style.background = '#f0f4ff'; }}
+                                            onMouseLeave={e => { e.currentTarget.style.background = '#fafbfc'; }}
+                                        >
+                                            <div style={{minWidth: 0, flex: 1}}>
+                                                <div
+                                                    style={{
+                                                        fontSize: 14, fontWeight: 600,
+                                                        whiteSpace: 'nowrap', overflow: 'hidden',
+                                                        textOverflow: 'ellipsis'
+                                                    }}
+                                                >
+                                                    {p.name}
+                                                </div>
+                                                <div style={{fontSize: 11, color: '#969da5'}}>
+                                                    {fmtSize(p.size)} · {fmtTime(p.mtime)}
+                                                </div>
                                             </div>
+                                            {this.state.loadingFile === p.name ? (
+                                                <span style={{fontSize: 12, color: '#4c97ff'}}>{T_LOADING_FILE}</span>
+                                            ) : (
+                                                <span style={{display: 'flex', alignItems: 'center', gap: 4}}>
+                                                    <button
+                                                        type="button"
+                                                        disabled={isRowBusy || !!this.state.loadingFile}
+                                                        title={T_RENAME_TITLE}
+                                                        onClick={e => {
+                                                            e.stopPropagation();
+                                                            this.startRename(p);
+                                                        }}
+                                                        style={{
+                                                            padding: '4px 8px', fontSize: 12,
+                                                            borderRadius: 5, whiteSpace: 'nowrap',
+                                                            border: '1px solid #c9cdd4', background: '#fff',
+                                                            color: '#575e75', cursor: 'pointer'
+                                                        }}
+                                                    >
+                                                        {T_RENAME}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        disabled={isRowBusy || !!this.state.loadingFile}
+                                                        onClick={e => {
+                                                            e.stopPropagation();
+                                                            this.doDelete(p);
+                                                        }}
+                                                        style={{
+                                                            padding: '4px 8px', fontSize: 12,
+                                                            borderRadius: 5, whiteSpace: 'nowrap',
+                                                            border: '1px solid #f3b5ae', background: '#fff',
+                                                            color: '#d93025', cursor: 'pointer'
+                                                        }}
+                                                    >
+                                                        {T_DELETE}
+                                                    </button>
+                                                    <span style={{fontSize: 12, color: '#4c97ff', whiteSpace: 'nowrap'}}>
+                                                        {T_OPEN}
+                                                    </span>
+                                                </span>
+                                            )}
                                         </div>
-                                        {this.state.loadingFile === p.name ? (
-                                            <span style={{fontSize: 12, color: '#4c97ff'}}>{T_LOADING_FILE}</span>
-                                        ) : (
-                                            <span style={{fontSize: 12, color: '#4c97ff', whiteSpace: 'nowrap'}}>
-                                                {T_OPEN}
-                                            </span>
-                                        )}
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                             {this.state.root && (
                                 <div
