@@ -419,5 +419,209 @@ export default function (vm, useCatBlocks) {
         };
     }
 
+    // ---------------------------------------------------------------------
+    // JARVIS 定制：积木右键菜单增加「剪切」/「粘贴」。
+    //
+    // 上游 scratch-blocks 的操作菜单只有「复制 / 添加注释 / 删除」，没有剪切。
+    // 想「把这堆积木挪到别处」时，只能先复制再删掉原块，两步而且容易忘删。
+    // 这里补上标准剪贴板语义：
+    //   - 剪切：把整叠积木（含其下挂的子块/嵌套）序列化成 XML 存进剪贴板，
+    //     然后把原积木从工作区移除（走 dispose，可被撤销）。
+    //   - 粘贴：从剪贴板 XML 反序列化，在右键位置旁边生成新积木。
+    //
+    // 剪贴板同时写进内存（跨角色、跨项目都能用）和 navigator.clipboard
+    // 的纯文本（剪切成 XML 文本，可粘到别处），内存那份是主用。
+    //
+    // 实现方式：包装 BlockSvg.prototype.showContextMenu_，在它把菜单项交给
+    // Blockly.ContextMenu.show 之前，用 customContextMenu 钩子把我们的项塞进去
+    // （customContextMenu 是官方预留的扩展点，见 block_svg.js:926）。
+    // 这样不碰 node_modules 里的包，npm install 不会冲掉。
+    // ---------------------------------------------------------------------
+    const JARVIS_CUT_PASTE = true;
+    if (JARVIS_CUT_PASTE && ScratchBlocks.BlockSvg && ScratchBlocks.ContextMenu) {
+        const CLIPBOARD_KEY = '__jarvisBlockClipboard';
+        // 剪贴板：{ xml: Element, count: number, ts: number }
+        ScratchBlocks[CLIPBOARD_KEY] = null;
+
+        const LABEL_CUT = '剪切';
+        const LABEL_PASTE = '粘贴';
+
+        /**
+         * 把积木（含下挂积木）序列化为 XML 克隆，同时返回包含块数量。
+         * @param {!Blockly.BlockSvg} block 起点积木。
+         * @return {{xml: !Element, count: number}} 克隆与数量。
+         */
+        const serializeBlock = function (block) {
+            // opt_noId=true 必须传：否则 XML 里会带上原积木的 id，
+            // 粘贴时 domToBlock 用同一 id 新建块会和原块冲突（id 重复）。
+            // blockToDomWithXY 还会带上 x/y，粘贴时我们随后会覆盖坐标。
+            const dom = ScratchBlocks.Xml.blockToDomWithXY(block, true);
+            const count = block.getDescendants(false, true).length;
+            return {xml: dom, count: count};
+        };
+
+        /**
+         * 剪切：复制到剪贴板后从工作区删除。
+         * @param {!Blockly.BlockSvg} block 要剪切的积木。
+         */
+        const cutBlock = function (block) {
+            if (!block || !block.isDeletable() || !block.isMovable() || block.isInFlyout) {
+                return;
+            }
+            const snapshot = serializeBlock(block);
+            ScratchBlocks[CLIPBOARD_KEY] = {
+                xml: snapshot.xml,
+                count: snapshot.count,
+                ts: Date.now()
+            };
+            // 尽力把 XML 文本也放到系统剪贴板（失败无所谓，内存那份够用）
+            try {
+                const text = ScratchBlocks.Xml.domToText(snapshot.xml);
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(text).catch(() => {});
+                }
+            } catch (e) {
+                // 忽略：非安全上下文或用户未授权
+            }
+            // 删除原积木（包一个事件组，撤销时能整组回来）
+            ScratchBlocks.Events.setGroup(true);
+            block.dispose(true, true);
+            ScratchBlocks.Events.setGroup(false);
+        };
+
+        /**
+         * 粘贴：把剪贴板里的积木放到工作区。
+         * @param {!Blockly.WorkspaceSvg} workspace 目标工作区。
+         * @param {!Blockly.BlockSvg} atBlock 右键所在积木（用来定位）。
+         * @param {!Event} e 触发事件（取鼠标坐标）。
+         */
+        const pasteBlock = function (workspace, atBlock, e) {
+            const clip = ScratchBlocks[CLIPBOARD_KEY];
+            if (!clip || !clip.xml) {
+                return;
+            }
+            const dom = clip.xml;
+            // 位置：优先落在右键点附近，其次参考原块的相对位置。
+            let x = 24;
+            let y = 24;
+            try {
+                if (typeof workspace.getOriginOffsetInPixels === 'function' &&
+                    e && typeof e.clientX === 'number' && typeof e.clientY === 'number') {
+                    const offset = workspace.getOriginOffsetInPixels();
+                    const scale = workspace.scale || 1;
+                    x = ((e.clientX - offset.x) / scale) + 20;
+                    y = ((e.clientY - offset.y) / scale) + 20;
+                } else if (atBlock) {
+                    const xy = atBlock.getRelativeToSurfaceXY();
+                    x = xy.x + 30;
+                    y = xy.y + 40;
+                }
+            } catch (err) {
+                // 取不到坐标就用默认值
+            }
+            dom.setAttribute('x', Math.round(x));
+            dom.setAttribute('y', Math.round(y));
+
+            ScratchBlocks.Events.setGroup(true);
+            try {
+                const newBlock = ScratchBlocks.Xml.domToBlock(dom, workspace);
+                if (newBlock) {
+                    if (typeof newBlock.select === 'function') {
+                        newBlock.select();
+                    }
+                    // 让粘贴出的积木贴到视野内
+                    if (typeof workspace.centerOnBlock === 'function') {
+                        try {
+                            workspace.centerOnBlock(newBlock.id);
+                        } catch (err) {
+                            // 非关键
+                        }
+                    }
+                }
+            } finally {
+                ScratchBlocks.Events.setGroup(false);
+            }
+        };
+
+        // 挂到 ContextMenu 上，便于单测/调试调用
+        ScratchBlocks.ContextMenu.jarvisCutOption = function (block) {
+            return {
+                text: LABEL_CUT,
+                enabled: !!(block && block.isDeletable() && block.isMovable() && !block.isInFlyout),
+                callback: function () {
+                    ScratchBlocks.ContextMenu.hide();
+                    cutBlock(block);
+                }
+            };
+        };
+        ScratchBlocks.ContextMenu.jarvisPasteOption = function (workspace, atBlock, e) {
+            const clip = ScratchBlocks[CLIPBOARD_KEY];
+            let label = LABEL_PASTE;
+            if (clip && clip.count > 1) {
+                label = `${LABEL_PASTE}（${clip.count} 块）`;
+            }
+            return {
+                text: label,
+                enabled: !!(clip && clip.xml),
+                callback: function () {
+                    ScratchBlocks.ContextMenu.hide();
+                    pasteBlock(workspace, atBlock, e);
+                }
+            };
+        };
+
+        // 包装 showContextMenu_：在官方拼装完菜单后、弹出前插入我们的两项。
+        // 放在「复制」之后、「删除」之前，符合常见编辑器的操作顺序。
+        const origShowContextMenu = ScratchBlocks.BlockSvg.prototype.showContextMenu_;
+        ScratchBlocks.BlockSvg.prototype.showContextMenu_ = function (e) {
+            if (this.workspace && this.workspace.options && this.workspace.options.readOnly) {
+                origShowContextMenu.call(this, e);
+                return;
+            }
+            if (this.isInFlyout) {
+                origShowContextMenu.call(this, e);
+                return;
+            }
+            const block = this;
+            const ws = this.workspace;
+            // 用 customContextMenu 钩子插入（官方扩展点），先备份再还原，
+            // 避免覆盖业务代码可能已经设置的钩子。
+            const prevHook = block.customContextMenu;
+            block.customContextMenu = function (menuOptions) {
+                if (typeof prevHook === 'function') {
+                    prevHook.call(block, menuOptions);
+                }
+                if (!menuOptions) {
+                    return;
+                }
+                // 定位「复制」项：它紧跟在菜单开头（showContextMenu_ 先 push
+                // blockDuplicateOption），但为了稳妥按文本匹配定位。
+                const dupText = ScratchBlocks.Msg && ScratchBlocks.Msg.DUPLICATE;
+                let anchor = dupText ?
+                    menuOptions.findIndex(opt => opt && opt.text === dupText) : -1;
+                if (anchor < 0) {
+                    // 找不到复制项就插到最前面
+                    anchor = -1;
+                }
+                const cutOption = ScratchBlocks.ContextMenu.jarvisCutOption(block);
+                const pasteOption =
+                    ScratchBlocks.ContextMenu.jarvisPasteOption(ws, block, e);
+                // 顺序：复制 → 剪切 → 粘贴 → （注释/删除）
+                menuOptions.splice(anchor + 1, 0, cutOption, pasteOption);
+            };
+            try {
+                origShowContextMenu.call(this, e);
+            } finally {
+                // ContextMenu.show 是同步的，钩子只在本次调用内生效，及时还原
+                block.customContextMenu = prevHook;
+            }
+        };
+
+        // 注：scratch-blocks 1.3.0 没有 ShortcutRegistry（该 API 是后续 Blockly
+        // 才引入的），所以这里只做右键菜单入口，不注册键盘快捷键。
+        // 若将来要加 Ctrl+X/V，应在 scratch-gui 的 containers/blocks.jsx 里挂
+        // keydown 监听，而不是在这里操作 Blockly 的快捷键体系。
+    }
+
     return ScratchBlocks;
 }
