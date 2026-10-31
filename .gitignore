@@ -1,5 +1,6 @@
 # Mac OS
 .DS_Store
+.idea/
 
 # NPM
 /node_modules
@@ -32,3 +33,9 @@ npm-*
 /.npm_broken/
 # 日志
 *.log
+/.idea/vcs.xml
+/.idea/scratch-gui.iml
+/.idea/codeStyles/Project.xml
+/.idea/inspectionProfiles/profiles_settings.xml
+/.idea/modules.xml
+/.idea/codeStyles/codeStyleConfig.xml

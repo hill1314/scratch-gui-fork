@@ -26,6 +26,12 @@ import LoginDropdown from './login-dropdown.jsx';
 import MenuBarHOC from '../../containers/menu-bar-hoc.jsx';
 import SettingsMenu from './settings-menu.jsx';
 import {DEFAULT_SAVE_PATH} from './save-path-settings.jsx';
+import {
+    ProjectNameBadge,
+    ProjectStoreModal,
+    openSaveDialog,
+    openLoadDialog
+} from './scratch-projects.jsx';
 
 import {openTipsLibrary, openDebugModal} from '../../reducers/modals';
 import {setPlayer} from '../../reducers/mode';
@@ -106,7 +112,11 @@ const ariaMessages = defineMessages({
 // localStorage 里的「项目保存路径」由 save-path-settings.jsx 维护。
 const LS_SAVE_PATH = 'jarvis.scratch.savePath';
 // 菜单项文案提到模块级常量，避免被生产构建的压缩步骤当作可丢弃文本节点移除。
-const SAVE_TO_LOCAL_LABEL = '保存项目到本机';
+// 文案统一去掉「本机」：项目实际存在当前 Mac 的统一目录里，与访问设备无关，
+// 从平板/别处电脑访问时「本机」会误导用户以为存到了自己那台设备上。
+const SAVE_TO_LOCAL_LABEL = '保存项目';
+const OPEN_LOCAL_LABEL = '打开项目';
+const IMPORT_PROJECT_LABEL = '导入项目文件';
 
 function bytesToBase64 (bytes) {
     let binary = '';
@@ -255,65 +265,8 @@ class MenuBar extends React.Component {
     }
     handleSaveToLocal () {
         this.props.onRequestCloseFile();
-        let savePath = '';
-        try {
-            savePath = (window.localStorage.getItem(LS_SAVE_PATH) || '').trim();
-        } catch (e) {
-            savePath = '';
-        }
-        if (!savePath) {
-            savePath = window.prompt(
-                '尚未设置「项目保存路径」。请先在顶部「设置 ⚙」里填写，或在此直接输入\n' +
-                '（必须是 /Users/hill 下的绝对路径，例如 ' + DEFAULT_SAVE_PATH + '）：',
-                DEFAULT_SAVE_PATH
-            );
-            if (!savePath) return;
-            savePath = savePath.trim();
-            try {
-                window.localStorage.setItem(LS_SAVE_PATH, savePath);
-            } catch (e) {
-                // 忽略不可写
-            }
-        }
-        const title = (this.props.projectTitle || 'untitled').trim() || 'untitled';
-        const filename = `${title.substring(0, 100)}.sb3`;
-        // ⚠️ vm.saveProjectSb3() 返回的是 Blob（不是 ArrayBuffer/Uint8Array），
-        // 上游 SB3Downloader 也是直接把它交给 downloadBlob。Blob 上没有 byteLength、
-        // 只有 size，必须先读成 ArrayBuffer 才能 base64。
-        this.props.vm.saveProjectSb3()
-            .then(content => {
-                if (content instanceof Blob) {
-                    return content.arrayBuffer().then(ab => ({bytes: new Uint8Array(ab), size: content.size}));
-                }
-                // 兼容老版本返回 ArrayBuffer / Uint8Array 的情况
-                if (content && content.buffer) {
-                    return {bytes: new Uint8Array(content.buffer, content.byteOffset, content.byteLength),
-                        size: content.byteLength};
-                }
-                return {bytes: new Uint8Array(0), size: 0};
-            })
-            .then(({bytes, size}) => {
-                if (!size) {
-                    throw new Error('当前项目内容为空，请先添加角色或积木再保存');
-                }
-                const b64 = bytesToBase64(bytes);
-                return fetch('/api/scratch/save', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({path: savePath, filename, data: b64})
-                });
-            })
-            .then(resp => resp.json())
-            .then(result => {
-                if (result && result.ok) {
-                    window.alert(`已保存到本机：\n${result.path}`);
-                } else {
-                    window.alert('保存失败：' + ((result && result.error) || '未知错误'));
-                }
-            })
-            .catch(err => {
-                window.alert('保存失败：' + (err && err.message ? err.message : err));
-            });
+        // JARVIS：打开「保存项目」弹窗，要求填写项目名称（统一存储，与设备无关）
+        openSaveDialog();
     }
     handleSetMode (mode) {
         return () => {
@@ -467,6 +420,8 @@ class MenuBar extends React.Component {
                                 onClick={this.props.onClickLogo}
                             />
                         </div>
+                        {/* JARVIS：当前项目名徽标（保存时设置、实时展示） */}
+                        <ProjectNameBadge />
                         {(this.props.canChangeTheme || this.props.canChangeLanguage) && (<SettingsMenu
                             canChangeLanguage={this.props.canChangeLanguage}
                             canChangeTheme={this.props.canChangeTheme}
@@ -525,15 +480,21 @@ class MenuBar extends React.Component {
                                         </MenuSection>
                                     )}
                                     <MenuSection>
+                                        {/* 「从电脑打开」改为「导入项目文件」：项目统一存在当前 Mac 上，
+                                            这一项的本质是上传一个外部 .sb3（别人发的、或从旧设备迁移来），
+                                            叫「从电脑打开」会和下面统一的「打开项目」混淆。 */}
                                         <MenuItem
                                             onClick={this.props.onStartSelectingFileUpload}
                                         >
-                                            {this.props.intl.formatMessage(sharedMessages.loadFromComputerTitle)}
+                                            {IMPORT_PROJECT_LABEL}
                                         </MenuItem>
-                                        {/* 「保存到电脑」已去掉：离线版里它和「保存项目到本机」重复，
-                                            后者能直接落到可配置路径，保留后者即可。 */}
+                                        {/* 「保存到电脑」已去掉：离线版里它和「保存项目」重复，
+                                            后者能直接落到可配置的统一下载路径，保留后者即可。 */}
                                         <MenuItem onClick={this.handleSaveToLocal}>
                                             {SAVE_TO_LOCAL_LABEL}
+                                        </MenuItem>
+                                        <MenuItem onClick={openLoadDialog}>
+                                            {OPEN_LOCAL_LABEL}
                                         </MenuItem>
                                     </MenuSection>
                                 </MenuBarMenu>
@@ -823,6 +784,9 @@ class MenuBar extends React.Component {
                 </div>
 
                 {aboutButton}
+
+                {/* JARVIS：项目保存/加载弹窗（vm 由 App 注入），关闭时返回 null */}
+                <ProjectStoreModal vm={this.props.vm} />
             </Box>
         );
     }
