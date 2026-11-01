@@ -317,3 +317,91 @@ $fade-out-distance: 15px;
 :global(.ReactModal__Body--open) {
     overflow: hidden;
 }
+
+/* ==========================================================================
+   JARVIS 二次开发：手机端（窄屏）分段式布局
+   --------------------------------------------------------------------------
+   背景：Scratch 官方 .editor-wrapper 用 flex-basis 把编辑器硬撑在 1024px
+   （见上方注释），手机竖屏 390px 根本放不下四块内容。之前的表现是
+   整个界面按 1024 渲染再溢出，字小、点不中。
+   方案：窄屏时
+     1) .flex-wrapper 由「左右两栏」改为「上下两段」；
+     2) 解除 .editor-wrapper 的 1024px flex-basis，让它自适应宽度；
+     3) 用 .mobile-pane-code / .mobile-pane-stage 按当前选择把另一段收起，
+        由 MobilePaneSwitch 切换（宽屏下这两个类不生效）。
+   注意：这些规则全部裹在 max-width 里，宽屏行为完全不变。
+   ========================================================================== */
+
+@media only screen and (max-width: 767px) {
+    /* 上下两段，而不是左右两栏 */
+    .body-wrapper :global([class*="flex-wrapper"]) {
+        flex-direction: column;
+        overflow-x: hidden;
+    }
+
+    /* 解除官方的 1024px 硬约束 —— 这是手机上「溢出/过小」的根因 */
+    .body-wrapper :global([class*="editor-wrapper"]) {
+        flex-basis: auto;
+        flex-shrink: 1;
+        flex-grow: 0;
+        width: 100%;
+        min-width: 0;
+        min-height: 0;
+    }
+
+    /* 舞台那一段同样解除固定宽度，改成占满并允许收缩 */
+    .body-wrapper :global([class*="stage-and-target-wrapper"]) {
+        flex-basis: auto;
+        width: 100%;
+        min-width: 0;
+        padding-left: 0;
+        padding-right: 0;
+    }
+
+    /* 积木面板（工具箱）在窄屏要变窄，否则代码区没地方 */
+    .body-wrapper :global([class*="blocks-wrapper"]) {
+        min-width: 0;
+    }
+
+    /* ---- 分区切换：点「代码」时舞台段收起，反之亦然 ---- */
+    .body-wrapper :global([class*="flex-wrapper"].jarvis-pane-code)
+        :global([class*="stage-and-target-wrapper"]) {
+        display: none;
+    }
+    .body-wrapper :global([class*="flex-wrapper"].jarvis-pane-stage)
+        :global([class*="editor-wrapper"]) {
+        display: none;
+    }
+
+    /* 选中那一段吃掉剩余高度，且允许内部滚动 */
+    .body-wrapper :global([class*="flex-wrapper"].jarvis-pane-code)
+        :global([class*="editor-wrapper"]) {
+        flex: 1 1 auto;
+        display: flex;
+        min-height: 0;
+    }
+    .body-wrapper :global([class*="flex-wrapper"].jarvis-pane-stage)
+        :global([class*="stage-and-target-wrapper"]) {
+        flex: 1 1 auto;
+        display: flex;
+        min-height: 0;
+    }
+
+    /* 注入的切换条：窄屏显示 */
+    :global(.jarvis-mobile-pane-switch) {
+        display: flex;
+    }
+
+    /* 手机上没有 hover，鼠标态的小按钮热区放大一档，手指更好点 */
+    .tab-list {
+        width: 100%;
+        overflow-x: auto;
+    }
+}
+
+/* 宽屏（>=768px）下切换条不显示，保持原有桌面布局 */
+@media only screen and (min-width: 768px) {
+    :global(.jarvis-mobile-pane-switch) {
+        display: none !important;
+    }
+}

@@ -133,6 +133,101 @@
         var viaJarvis = q.get('jarvis') === '1' || location.port !== '8601';
         if (viaJarvis) window.__SCRATCH_ASSET_HOST__ = location.origin + '/scratch-assets';
       })();
+
+      /* JARVIS 二次开发：手机端（窄屏）分区切换。
+       *
+       * 为什么必须在 DOM 层做，而不是改 React 组件：
+       *   Scratch 官方把编辑器布局硬编码成最低 1024px（gui.css 里 .editor-wrapper 的
+       *   flex-basis），手机竖屏 ~390px 放不下「积木面板 + 代码区 + 舞台 + 角色列表」四块。
+       *   gui.jsx 是无状态函数组件且被 MediaQuery 深层包裹，改结构风险和上游合并成本都高。
+       *   这里改为零侵入：给 .flex-wrapper 挂 jarvis-pane-code / jarvis-pane-stage 类，
+       *   由 gui.css 的 @media (max-width:767px) 决定收起哪一段；切换条也是纯 DOM 插入。
+       *
+       * 注意：类名是 CSS Modules 哈希过的，必须用 [class*="flex-wrapper"] 这种前缀匹配，
+       * 不能写死哈希名（每次构建都会变）。
+       */
+      (function setupMobilePanes () {
+        var MOBILE = '(max-width: 767px)';
+        var T_CODE = '代码';
+        var T_STAGE = '舞台';
+        var applied = false;
+        var current = 'stage';
+
+        function findFlex () {
+          return document.querySelector('[class*="flex-wrapper"]');
+        }
+
+        function applyPane (flex, bar, pane) {
+          current = pane;
+          flex.classList.toggle('jarvis-pane-code', pane === 'code');
+          flex.classList.toggle('jarvis-pane-stage', pane === 'stage');
+          var btns = bar.querySelectorAll('button');
+          for (var i = 0; i < btns.length; i++) {
+            var on = btns[i].getAttribute('data-pane') === pane;
+            btns[i].style.background = on ? '#4c97ff' : 'rgba(0,0,0,.06)';
+            btns[i].style.color = on ? '#fff' : '#575e75';
+          }
+        }
+
+        function buildBar (flex) {
+          var bar = document.createElement('div');
+          bar.className = 'jarvis-mobile-pane-switch';
+          // 高度 52，按钮 44 —— 44px 是 iOS 人机指南的最小可点尺寸
+          bar.style.cssText = [
+            'display:flex', 'align-items:center', 'padding:4px 6px',
+            'height:52px', 'box-sizing:border-box', 'background:#fff',
+            'border-bottom:1px solid rgba(0,0,0,.12)', 'flex-shrink:0'
+          ].join(';');
+
+          function makeBtn (pane, label) {
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.setAttribute('data-pane', pane);
+            b.textContent = label;
+            b.style.cssText = [
+              'flex:1 1 0', 'height:44px', 'border:none', 'border-radius:8px',
+              'margin:0 3px', 'font-size:14px', 'font-weight:700',
+              'font-family:inherit', 'cursor:pointer'
+            ].join(';');
+            b.addEventListener('click', function () {
+              applyPane(flex, bar, pane);
+              // 切换后让 Scratch 重新计算画布尺寸（积木区/舞台都是 canvas）
+              setTimeout(function () {
+                window.dispatchEvent(new Event('resize'));
+              }, 60);
+            });
+            return b;
+          }
+
+          bar.appendChild(makeBtn('code', T_CODE));
+          bar.appendChild(makeBtn('stage', T_STAGE));
+          return bar;
+        }
+
+        function tryApply () {
+          var flex = findFlex();
+          if (!flex || !flex.parentNode) return false;
+          if (flex.getAttribute('data-jarvis-mobile') === '1') {
+            applied = true;
+            return true;
+          }
+          var bar = buildBar(flex);
+          flex.parentNode.insertBefore(bar, flex);
+          flex.setAttribute('data-jarvis-mobile', '1');
+          // 手机端默认先看舞台：打开就能看到作品
+          applyPane(flex, bar, 'stage');
+          applied = true;
+          return true;
+        }
+
+        // React 挂载是异步的，轮询几次直到 .flex-wrapper 出现
+        var tries = 0;
+        var timer = setInterval(function () {
+          if (tryApply() || ++tries > 40) {
+            clearInterval(timer);
+          }
+        }, 250);
+      })();
     </script>
     <% if (htmlWebpackPlugin.options.gtm_id) { %>
       <!-- Google Tag Manager (noscript) -->

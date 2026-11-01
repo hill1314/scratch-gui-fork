@@ -5,10 +5,39 @@ body,
     width: 100%; 
     height: 100%;
     margin: 0;
+}
 
-    /* Setting min height/width makes the UI scroll below those sizes */
-    min-width: 1024px;
-    min-height: 640px; /* Min height to fit sprite/backdrop button */
+/*
+    JARVIS 二次开发：把官方的全局最小尺寸限制挪进「仅宽屏」媒体查询里。
+
+    官方原本无条件设 min-width: 1024px（注释：低于该尺寸让 UI 滚动）。
+    这在电脑上没问题，但在手机上会造成真正的病根：
+      html/body/#app 被锁死在 1024px 宽 → 页面宽度 1024、而屏幕只有 390
+      → 整个编辑器按 1024 渲染再横向溢出，字小、点不中、要左右拖。
+    仅靠改内部 flex 布局是治不好的，必须先把这层全局锁解开。
+
+    窄屏（<=767px）交给 gui.css 里的分段式布局接管；宽屏行为与上游一致。
+*/
+@media only screen and (min-width: 768px) {
+    html,
+    body,
+    .app {
+        /* Setting min height/width makes the UI scroll below those sizes */
+        min-width: 1024px;
+        min-height: 640px; /* Min height to fit sprite/backdrop button */
+    }
+}
+
+/* 窄屏：解除全局最小宽度，否则 flex 子项的 min-width:0 也救不回来 */
+@media only screen and (max-width: 767px) {
+    html,
+    body,
+    .app {
+        min-width: 0;
+        min-height: 0;
+        /* 手机上不允许整页横向滚动，各分区内部自己滚 */
+        overflow-x: hidden;
+    }
 }
 
 /* @todo: move globally? Safe / side FX, for blocks particularly? */
