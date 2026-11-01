@@ -5,6 +5,19 @@ import {injectIntl} from 'react-intl';
 
 import LibraryItemComponent from '../components/library-item/library-item.jsx';
 
+// JARVIS 二次开发：素材（角色/造型/声音）库缩略图的地址前缀。
+//
+// 官方这里写死 https://cdn.assets.scratch.mit.edu，属于直连国外 CDN：
+//   - 本机有 Clash 代理时能出来，所以开发机上看着一切正常；
+//   - 手机/平板等**没有代理**的设备访问时全部加载失败，表现为「角色库里全是破图」。
+//
+// index.ejs 在经 JARVIS 网关打开时会注入 window.__SCRATCH_ASSET_HOST__（同源
+// /scratch-assets，由网关反向代理并落盘缓存），这里优先用它，保证任何设备都能取到图。
+// 非网关环境（单独调试）仍回落到官方地址，行为不变。
+const ASSET_BASE =
+    (typeof window !== 'undefined' && window.__SCRATCH_ASSET_HOST__) ||
+    'https://cdn.assets.scratch.mit.edu';
+
 class LibraryItem extends React.PureComponent {
     constructor (props) {
         super(props);
@@ -106,7 +119,7 @@ class LibraryItem extends React.PureComponent {
     render () {
         const iconMd5 = this.curIconMd5();
         const iconURL = iconMd5 ?
-            `https://cdn.assets.scratch.mit.edu/internalapi/asset/${iconMd5}/get/` :
+            `${ASSET_BASE}/internalapi/asset/${iconMd5}/get/` :
             this.props.iconRawURL;
         return (
             <LibraryItemComponent
