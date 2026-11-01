@@ -34,6 +34,7 @@ import {
     setProjectName,
     DEFAULT_PROJECT_NAME
 } from './scratch-projects.jsx';
+import {LivePresenter} from './scratch-live.jsx';
 
 import {openTipsLibrary, openDebugModal} from '../../reducers/modals';
 import {setPlayer} from '../../reducers/mode';
@@ -502,6 +503,13 @@ class MenuBar extends React.Component {
                                         <MenuItem onClick={openLoadDialog}>
                                             {OPEN_LOCAL_LABEL}
                                         </MenuItem>
+                                    </MenuSection>
+                                    {/* 直播观看：演示者推、其他设备只读围观（单向，避免互相覆盖） */}
+                                    <MenuSection>
+                                        <LivePresenter
+                                            title={this.props.projectTitle}
+                                            vm={this.props.vm}
+                                        />
                                     </MenuSection>
                                 </MenuBarMenu>
                             </div>
