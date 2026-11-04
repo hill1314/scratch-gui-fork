@@ -119,6 +119,7 @@ const LS_SAVE_PATH = 'jarvis.scratch.savePath';
 // 从平板/别处电脑访问时「本机」会误导用户以为存到了自己那台设备上。
 const SAVE_TO_LOCAL_LABEL = '保存项目';
 const OPEN_LOCAL_LABEL = '打开项目';
+const NEW_PROJECT_LABEL = '新建项目';
 const IMPORT_PROJECT_LABEL = '导入项目文件';
 
 function bytesToBase64 (bytes) {
@@ -429,14 +430,29 @@ class MenuBar extends React.Component {
                         </div>
                         {/* JARVIS：当前项目名徽标（保存时设置、实时展示） */}
                         <ProjectNameBadge />
-                        {(this.props.canChangeTheme || this.props.canChangeLanguage) && (<SettingsMenu
-                            canChangeLanguage={this.props.canChangeLanguage}
-                            canChangeTheme={this.props.canChangeTheme}
-                            isRtl={this.props.isRtl}
-                            onRequestClose={this.props.onRequestCloseSettings}
-                            onRequestOpen={this.props.onClickSettings}
-                            settingsMenuOpen={this.props.settingsMenuOpen}
-                        />)}
+                        {/* JARVIS：把「项目」里的 新建/保存/打开 抽成项目名后的常驻按钮 */}
+                        {(this.props.canManageFiles) && (
+                            <React.Fragment>
+                                <div
+                                    className={classNames(styles.menuBarItem, styles.hoverable)}
+                                    onClick={this.handleClickNew}
+                                >
+                                    <span className={styles.collapsibleLabel}>{NEW_PROJECT_LABEL}</span>
+                                </div>
+                                <div
+                                    className={classNames(styles.menuBarItem, styles.hoverable)}
+                                    onClick={this.handleSaveToLocal}
+                                >
+                                    <span className={styles.collapsibleLabel}>{SAVE_TO_LOCAL_LABEL}</span>
+                                </div>
+                                <div
+                                    className={classNames(styles.menuBarItem, styles.hoverable)}
+                                    onClick={openLoadDialog}
+                                >
+                                    <span className={styles.collapsibleLabel}>{OPEN_LOCAL_LABEL}</span>
+                                </div>
+                            </React.Fragment>
+                        )}
                         {(this.props.canManageFiles) && (
                             <div
                                 className={classNames(styles.menuBarItem, styles.hoverable, {
@@ -459,14 +475,6 @@ class MenuBar extends React.Component {
                                     place={this.props.isRtl ? 'left' : 'right'}
                                     onRequestClose={this.props.onRequestCloseFile}
                                 >
-                                    <MenuSection>
-                                        <MenuItem
-                                            isRtl={this.props.isRtl}
-                                            onClick={this.handleClickNew}
-                                        >
-                                            {newProjectMessage}
-                                        </MenuItem>
-                                    </MenuSection>
                                     {(this.props.canSave || this.props.canCreateCopy || this.props.canRemix) && (
                                         <MenuSection>
                                             {this.props.canSave && (
@@ -489,19 +497,11 @@ class MenuBar extends React.Component {
                                     <MenuSection>
                                         {/* 「从电脑打开」改为「导入项目文件」：项目统一存在当前 Mac 上，
                                             这一项的本质是上传一个外部 .sb3（别人发的、或从旧设备迁移来），
-                                            叫「从电脑打开」会和下面统一的「打开项目」混淆。 */}
+                                            叫「从电脑打开」会和顶栏的「打开项目」混淆。 */}
                                         <MenuItem
                                             onClick={this.props.onStartSelectingFileUpload}
                                         >
                                             {IMPORT_PROJECT_LABEL}
-                                        </MenuItem>
-                                        {/* 「保存到电脑」已去掉：离线版里它和「保存项目」重复，
-                                            后者能直接落到可配置的统一下载路径，保留后者即可。 */}
-                                        <MenuItem onClick={this.handleSaveToLocal}>
-                                            {SAVE_TO_LOCAL_LABEL}
-                                        </MenuItem>
-                                        <MenuItem onClick={openLoadDialog}>
-                                            {OPEN_LOCAL_LABEL}
                                         </MenuItem>
                                     </MenuSection>
                                     {/* 直播观看：演示者推、其他设备只读围观（单向，避免互相覆盖） */}
@@ -636,6 +636,14 @@ class MenuBar extends React.Component {
                     </div>
                     <Divider className={classNames(styles.divider)} />
                     <div className={styles.fileGroup}>
+                        {(this.props.canChangeTheme || this.props.canChangeLanguage) && (<SettingsMenu
+                            canChangeLanguage={this.props.canChangeLanguage}
+                            canChangeTheme={this.props.canChangeTheme}
+                            isRtl={this.props.isRtl}
+                            onRequestClose={this.props.onRequestCloseSettings}
+                            onRequestOpen={this.props.onClickSettings}
+                            settingsMenuOpen={this.props.settingsMenuOpen}
+                        />)}
                         <div
                             aria-label={this.props.intl.formatMessage(ariaMessages.tutorials)}
                             className={

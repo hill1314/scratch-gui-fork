@@ -115,7 +115,8 @@
 }
 
 .divider {
-    margin: 0 .5rem;
+    margin-right: .5rem;
+    margin-left: auto;
     height: 34px;
 }
 

@@ -51,7 +51,7 @@ const SettingsMenu = ({
         <MenuBarMenu
             className={menuBarStyles.menuBarMenu}
             open={settingsMenuOpen}
-            place={isRtl ? 'left' : 'right'}
+            place={isRtl ? 'right' : 'left'}
             onRequestClose={onRequestClose}
         >
             {SHOW_LANGUAGE && canChangeLanguage && (
