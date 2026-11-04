@@ -141,6 +141,24 @@
          * 单独 npm start 调试（localhost:8601）时仍用官方地址，行为与上游一致。 */
         var viaJarvis = q.get('jarvis') === '1' || location.port !== '8601';
         if (viaJarvis) window.__SCRATCH_ASSET_HOST__ = location.origin + '/scratch-assets';
+
+        /* JARVIS：一次性迁移——清掉早期测试遗留的项目名(如 "sha")，让顶栏徽标回归
+         * 默认「未命名」。用迁移标记保证只执行一次；只清空值或已知测试残留，
+         * 不误删用户真实保存的项目名(如「躲避虫子」)。徽标读的是 localStorage，
+         * 这里在 React 挂载前清掉，构造时即读到空值 → 走 DEFAULT_PROJECT_NAME。 */
+        if (viaJarvis) {
+          try {
+            var MIG = 'jarvis.scratch.projectName.migrated';
+            if (!localStorage.getItem(MIG)) {
+              var cur = (localStorage.getItem('jarvis.scratch.projectName') || '').trim();
+              if (cur === '' || cur === 'sha') {
+                localStorage.removeItem('jarvis.scratch.projectName');
+                window.dispatchEvent(new CustomEvent('jarvis-project-name-changed', {detail: {name: ''}}));
+              }
+              localStorage.setItem(MIG, '1');
+            }
+          } catch (e) {}
+        }
       })();
 
       /* JARVIS 二次开发：手机端（窄屏）分区切换。
