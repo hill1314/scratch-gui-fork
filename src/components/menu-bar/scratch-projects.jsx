@@ -290,7 +290,6 @@ export class ProjectStoreModal extends React.Component {
             .then(() => {
                 setProjectName(name);
                 this.setState({loadingFile: null, mode: null});
-                window.alert('已加载项目「' + name + '」');
             })
             .catch(err => this.setState({
                 loadingFile: null,
