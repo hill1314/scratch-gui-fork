@@ -263,7 +263,6 @@ export class ProjectStoreModal extends React.Component {
                         if (res && res.ok) {
                             setProjectName(name);
                             this.setState({busy: false, mode: null});
-                            window.alert('已保存项目「' + name + '」到统一项目目录：\n' + (res.path || ''));
                         } else {
                             throw new Error((res && res.error) || '保存失败');
                         }
