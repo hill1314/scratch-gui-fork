@@ -411,7 +411,10 @@ class MenuBar extends React.Component {
             <Box
                 className={classNames(
                     this.props.className,
-                    styles.menuBar
+                    styles.menuBar,
+                    // JARVIS 二次开发：稳定的裸类名钩子，供 index.ejs 在 jarvis 模式下
+                    // 给顶栏预留右侧空间（让开固定定位的「返回 JARVIS」按钮），避免二者折叠。
+                    'jarvis-menu-bar'
                 )}
             >
                 <div className={styles.mainMenu}>
