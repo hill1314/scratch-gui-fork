@@ -47,6 +47,66 @@ const T_DELETE_CONFIRM_SUFFIX = '」吗？\n\n删除后文件会移入统一目�
 // 新建项目后的默认项目名（顶栏徽标显示它，保存时会作为「项目名称」预填值）
 export const DEFAULT_PROJECT_NAME = '未命名';
 
+// ---------- 启动选择项目 / 自动保存 文案 ----------
+// 进页面第一件事是先选项目：要么打开一个已有项目，要么新建一个（必须命名）。
+const T_START_TITLE = '先选一个项目';
+const T_START_HINT = '每次打开编辑器都要先确定在改哪个项目，避免改动落在不该落的地方。';
+const T_START_NEW_SECTION = '新建项目';
+const T_START_NEW_NAME = '项目名称（必填）';
+const T_START_NEW_PH = '例如：小猫冒险';
+const T_START_NEW_BTN = '新建并开始';
+const T_START_CREATING = '创建中…';
+const T_START_OPEN_SECTION = '打开已有项目';
+const T_START_EMPTY = '还没有项目，直接在上面新建一个吧。';
+const T_RELOAD = '刷新列表';
+// 自动保存（每 10 秒一次，静默覆盖同名文件）
+export const AUTOSAVE_INTERVAL_MS = 10000;
+const T_AUTO_SAVING = '保存中…';
+const T_AUTO_SAVED = '已自动保存';
+const T_AUTO_FAIL = '自动保存失败';
+const T_AUTO_IDLE = '每 10 秒自动保存';
+
+// 手动保存与自动保存共用一把锁：同一时刻只允许一个保存请求在飞，
+// 否则两次 saveProjectSb3 交错会把较早的内容当成最新版覆盖上去。
+let SAVE_IN_FLIGHT = false;
+
+// 保存当前画布为指定项目名（同名覆盖）。成功返回 true，失败抛错。
+function saveProjectAsName (vm, name) {
+    if (!vm || !vm.saveProjectSb3) {
+        return Promise.reject(new Error('编辑器尚未就绪，请稍候再试'));
+    }
+    return Promise.resolve(vm.saveProjectSb3())
+        .then(content => {
+            if (content instanceof Blob) {
+                return content.arrayBuffer().then(ab => ({
+                    bytes: new Uint8Array(ab), size: content.size
+                }));
+            }
+            if (content && content.buffer) {
+                return {
+                    bytes: new Uint8Array(content.buffer, content.byteOffset, content.byteLength),
+                    size: content.byteLength
+                };
+            }
+            return {bytes: new Uint8Array(0), size: 0};
+        })
+        .then(({bytes, size}) => {
+            if (!size) throw new Error('当前项目内容为空，请先添加角色或积木再保存');
+            const b64 = bytesToBase64(bytes);
+            return fetch('/api/scratch/save', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({name: name, data: b64})
+            })
+                .then(r => r.json())
+                .then(res => {
+                    if (!res || !res.ok) throw new Error((res && res.error) || '保存失败');
+                    setProjectName(name);
+                    return true;
+                });
+        });
+}
+
 export const PROJECT_NAME_KEY = 'jarvis.scratch.projectName';
 
 export function getProjectName () {
@@ -148,7 +208,8 @@ export class ProjectStoreModal extends React.Component {
     constructor (props) {
         super(props);
         this.state = {
-            mode: null,          // null | 'save' | 'load'
+            mode: null,          // null | 'start' | 'save' | 'load'
+            startSettled: false, // 启动选择弹窗是否已经处理过（选过项目后不再自动弹）
             name: '',
             busy: false,
             error: null,
@@ -161,6 +222,8 @@ export class ProjectStoreModal extends React.Component {
             renameValue: '',     // 重命名输入框内容
             rowBusy: null        // 正在删除/重命名中的项目文件名
         };
+        this.maybeOpenStart = this.maybeOpenStart.bind(this);
+        this.openStart = this.openStart.bind(this);
         this.openSave = this.openSave.bind(this);
         this.openLoad = this.openLoad.bind(this);
         this.close = this.close.bind(this);
@@ -177,10 +240,31 @@ export class ProjectStoreModal extends React.Component {
     componentDidMount () {
         window.addEventListener('jarvis-open-save', this.openSave);
         window.addEventListener('jarvis-open-load', this.openLoad);
+        this.maybeOpenStart();
+    }
+    componentDidUpdate () {
+        // vm 由 App 注入、可能晚于本组件就绪，所以每次 props 变化都再看一眼
+        this.maybeOpenStart();
     }
     componentWillUnmount () {
         window.removeEventListener('jarvis-open-save', this.openSave);
         window.removeEventListener('jarvis-open-load', this.openLoad);
+    }
+    // 启动选择：只要编辑器就绪、且还没处理过，就强制弹一次「选项目 / 新建项目」
+    maybeOpenStart () {
+        if (this.state.startSettled || this.state.mode) return;
+        const vm = this.props.vm;
+        if (!vm || !vm.saveProjectSb3) return;
+        this.openStart();
+    }
+    openStart () {
+        setProjectName('');   // 还没确定项目：先让徽标回到「未命名」，别显示上次的名字
+        this.setState({
+            mode: 'start', name: '', error: null, busy: false,
+            listError: null, loadingList: true, projects: [], root: '',
+            renamingFile: null, rowBusy: null, loadingFile: null
+        });
+        this.refreshList();
     }
     openSave () {
         this.setState({mode: 'save', name: getProjectName(), error: null, busy: false});
@@ -215,63 +299,40 @@ export class ProjectStoreModal extends React.Component {
             .catch(err => this.setState({listError: String(err), loadingList: false}));
     }
     close () {
-        this.setState({mode: null});
+        // 启动选择弹窗是「强制」的：不选项目就直接关掉等于回到未归属状态，
+        // 所以这里只在 save/load 弹窗里生效；start 模式点遮罩/取消也走这里兜底。
+        this.setState({mode: null, startSettled: true});
     }
     onName (e) {
         this.setState({name: e.target.value});
     }
     doSave () {
         const name = (this.state.name || '').trim();
-        if (!name) {
-            this.setState({error: '请输入项目名称'});
+        if (!name || name === DEFAULT_PROJECT_NAME) {
+            this.setState({error: '请输入项目名称（新建项目必须命名）'});
             return;
         }
+        if (SAVE_IN_FLIGHT) return;
         const vm = this.props.vm;
         if (!vm || !vm.saveProjectSb3) {
             this.setState({error: '编辑器尚未就绪，请稍候再试'});
             return;
         }
+        const isStart = this.state.mode === 'start';
         this.setState({busy: true, error: null});
-        // vm.saveProjectSb3() 返回 Blob（不是 ArrayBuffer），需先读成二进制再 base64
-        vm.saveProjectSb3()
-            .then(content => {
-                if (content instanceof Blob) {
-                    return content.arrayBuffer().then(ab => ({
-                        bytes: new Uint8Array(ab), size: content.size
-                    }));
-                }
-                if (content && content.buffer) {
-                    return {
-                        bytes: new Uint8Array(content.buffer, content.byteOffset, content.byteLength),
-                        size: content.byteLength
-                    };
-                }
-                return {bytes: new Uint8Array(0), size: 0};
+        SAVE_IN_FLIGHT = true;
+        saveProjectAsName(vm, name)
+            .then(() => {
+                SAVE_IN_FLIGHT = false;
+                this.setState({
+                    busy: false, mode: null,
+                    startSettled: isStart ? true : this.state.startSettled
+                });
             })
-            .then(({bytes, size}) => {
-                if (!size) {
-                    throw new Error('当前项目内容为空，请先添加角色或积木再保存');
-                }
-                const b64 = bytesToBase64(bytes);
-                return fetch('/api/scratch/save', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({name: name, data: b64})
-                })
-                    .then(r => r.json())
-                    .then(res => {
-                        if (res && res.ok) {
-                            setProjectName(name);
-                            this.setState({busy: false, mode: null});
-                        } else {
-                            throw new Error((res && res.error) || '保存失败');
-                        }
-                    });
-            })
-            .catch(err => this.setState({
-                busy: false,
-                error: (err && err.message) || String(err)
-            }));
+            .catch(err => {
+                SAVE_IN_FLIGHT = false;
+                this.setState({busy: false, error: (err && err.message) || String(err)});
+            });
     }
     doLoad (file, name) {
         this.setState({loadingFile: name, listError: null});
@@ -288,7 +349,7 @@ export class ProjectStoreModal extends React.Component {
             })
             .then(() => {
                 setProjectName(name);
-                this.setState({loadingFile: null, mode: null});
+                this.setState({loadingFile: null, mode: null, startSettled: true});
             })
             .catch(err => this.setState({
                 loadingFile: null,
@@ -368,6 +429,7 @@ export class ProjectStoreModal extends React.Component {
     }
     render () {
             if (!this.state.mode) return null;
+        const isStart = this.state.mode === 'start';
         const isSave = this.state.mode === 'save';
         const overlay = {
             position: 'fixed', left: 0, top: 0, right: 0, bottom: 0,
@@ -383,13 +445,18 @@ export class ProjectStoreModal extends React.Component {
             <div
                 style={overlay}
                 onMouseDown={e => {
-                    if (e.target === e.currentTarget) this.close();
+                    if (e.target === e.currentTarget && !isStart) this.close();
                 }}
             >
                 <div style={card}>
-                    <div style={{fontSize: 16, fontWeight: 700, marginBottom: 14}}>
-                        {isSave ? T_SAVE_TITLE : T_LOAD_TITLE}
+                    <div style={{fontSize: 16, fontWeight: 700, marginBottom: isStart ? 4 : 14}}>
+                        {isStart ? T_START_TITLE : (isSave ? T_SAVE_TITLE : T_LOAD_TITLE)}
                     </div>
+                    {isStart && (
+                        <div style={{fontSize: 12, color: '#575e75', marginBottom: 14}}>
+                            {T_START_HINT}
+                        </div>
+                    )}
 
                     {isSave ? (
                         <div>
@@ -425,6 +492,48 @@ export class ProjectStoreModal extends React.Component {
                         </div>
                     ) : (
                         <div>
+                            {isStart && (
+                                <div
+                                    style={{
+                                        marginBottom: 16, padding: '12px 12px 10px',
+                                        border: '1px solid #cfdcff', background: '#f4f8ff',
+                                        borderRadius: 8
+                                    }}
+                                >
+                                    <div style={{fontSize: 13, fontWeight: 700, marginBottom: 8}}>
+                                        {T_START_NEW_SECTION}
+                                    </div>
+                                    <label
+                                        style={{
+                                            display: 'block', fontSize: 12, fontWeight: 700,
+                                            marginBottom: 6, color: '#575e75'
+                                        }}
+                                    >
+                                        {T_START_NEW_NAME}
+                                    </label>
+                                    <input
+                                        autoFocus
+                                        type="text"
+                                        value={this.state.name}
+                                        onChange={this.onName}
+                                        placeholder={T_START_NEW_PH}
+                                        spellCheck={false}
+                                        onKeyDown={e => {
+                                            if (e.key === 'Enter') this.doSave();
+                                        }}
+                                        style={{
+                                            display: 'block', width: '100%', boxSizing: 'border-box',
+                                            padding: '8px 10px', fontSize: 14, fontFamily: 'inherit',
+                                            borderRadius: 6, border: '1px solid #c9cdd4', outline: 'none'
+                                        }}
+                                    />
+                                </div>
+                            )}
+                            {isStart && (
+                                <div style={{fontSize: 13, fontWeight: 700, marginBottom: 8}}>
+                                    {T_START_OPEN_SECTION}
+                                </div>
+                            )}
                             {this.state.loadingList && (
                                 <div style={{fontSize: 13, color: '#969da5'}}>{T_LOADING_LIST}</div>
                             )}
@@ -435,7 +544,9 @@ export class ProjectStoreModal extends React.Component {
                             )}
                             {!this.state.loadingList && !this.state.listError &&
                                 this.state.projects.length === 0 && (
-                                <div style={{fontSize: 13, color: '#969da5'}}>{T_EMPTY_HINT}</div>
+                                <div style={{fontSize: 13, color: '#969da5'}}>
+                                    {isStart ? T_START_EMPTY : T_EMPTY_HINT}
+                                </div>
                             )}
                             <div style={{marginTop: 8}}>
                                 {this.state.projects.map(p => {
@@ -588,36 +699,73 @@ export class ProjectStoreModal extends React.Component {
                         </div>
                     )}
 
+                    {this.state.error && !isSave && (
+                        <div style={{marginTop: 12, fontSize: 12, color: '#d93025'}}>
+                            {this.state.error}
+                        </div>
+                    )}
                     <div
                         style={{
                             display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 18
                         }}
                     >
-                        <button
-                            type="button"
-                            onClick={this.close}
-                            style={{
-                                padding: '8px 16px', fontSize: 13, borderRadius: 6,
-                                border: '1px solid #c9cdd4', background: '#fff',
-                                color: '#575e75', cursor: 'pointer'
-                            }}
-                        >
-                            {T_CANCEL}
-                        </button>
-                        {isSave && (
-                            <button
-                                type="button"
-                                disabled={this.state.busy}
-                                onClick={this.doSave}
-                                style={{
-                                    padding: '8px 18px', fontSize: 13, fontWeight: 700,
-                                    borderRadius: 6, border: 'none',
-                                    background: this.state.busy ? '#a9c7ff' : '#4c97ff',
-                                    color: '#fff', cursor: this.state.busy ? 'default' : 'pointer'
-                                }}
-                            >
-                                {this.state.busy ? T_SAVING_BTN : T_SAVE_BTN}
-                            </button>
+                        {isStart ? (
+                            <React.Fragment>
+                                <button
+                                    type="button"
+                                    disabled={this.state.busy}
+                                    onClick={this.refreshList}
+                                    style={{
+                                        padding: '8px 14px', fontSize: 13, borderRadius: 6,
+                                        border: '1px solid #c9cdd4', background: '#fff',
+                                        color: '#575e75', cursor: this.state.busy ? 'default' : 'pointer'
+                                    }}
+                                >
+                                    {T_RELOAD}
+                                </button>
+                                <button
+                                    type="button"
+                                    disabled={this.state.busy}
+                                    onClick={this.doSave}
+                                    style={{
+                                        padding: '8px 18px', fontSize: 13, fontWeight: 700,
+                                        borderRadius: 6, border: 'none',
+                                        background: this.state.busy ? '#a9c7ff' : '#4c97ff',
+                                        color: '#fff', cursor: this.state.busy ? 'default' : 'pointer'
+                                    }}
+                                >
+                                    {this.state.busy ? T_START_CREATING : T_START_NEW_BTN}
+                                </button>
+                            </React.Fragment>
+                        ) : (
+                            <React.Fragment>
+                                <button
+                                    type="button"
+                                    onClick={this.close}
+                                    style={{
+                                        padding: '8px 16px', fontSize: 13, borderRadius: 6,
+                                        border: '1px solid #c9cdd4', background: '#fff',
+                                        color: '#575e75', cursor: 'pointer'
+                                    }}
+                                >
+                                    {T_CANCEL}
+                                </button>
+                                {isSave && (
+                                    <button
+                                        type="button"
+                                        disabled={this.state.busy}
+                                        onClick={this.doSave}
+                                        style={{
+                                            padding: '8px 18px', fontSize: 13, fontWeight: 700,
+                                            borderRadius: 6, border: 'none',
+                                            background: this.state.busy ? '#a9c7ff' : '#4c97ff',
+                                            color: '#fff', cursor: this.state.busy ? 'default' : 'pointer'
+                                        }}
+                                    >
+                                        {this.state.busy ? T_SAVING_BTN : T_SAVE_BTN}
+                                    </button>
+                                )}
+                            </React.Fragment>
                         )}
                     </div>
                 </div>
@@ -627,6 +775,85 @@ export class ProjectStoreModal extends React.Component {
 }
 
 ProjectStoreModal.propTypes = {
+    vm: PropTypes.object
+};
+
+// ============================ 自动保存 ============================
+// 编辑过程中每 10 秒把当前画布覆盖保存到「当前项目名」对应的 .sb3。
+// 只有已经选定项目（项目名不是「未命名」）才落盘，避免把没命名的草稿写进统一目录。
+function fmtClock (ms) {
+    try {
+        const d = new Date(ms);
+        const p = x => (x < 10 ? '0' : '') + x;
+        return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+    } catch (e) {
+        return '';
+    }
+}
+
+export class AutoSaver extends React.Component {
+    constructor (props) {
+        super(props);
+        this.state = {status: 'idle', at: 0, error: null};
+        this.timer = null;
+        this.tick = this.tick.bind(this);
+    }
+    componentDidMount () {
+        this.timer = setInterval(this.tick, AUTOSAVE_INTERVAL_MS);
+    }
+    componentWillUnmount () {
+        if (this.timer) clearInterval(this.timer);
+    }
+    tick () {
+        const vm = this.props.vm;
+        if (!vm || !vm.saveProjectSb3) return;
+        const name = getProjectName();
+        if (!name || name === DEFAULT_PROJECT_NAME) return;   // 没选定项目：不自动保存
+        if (SAVE_IN_FLIGHT) return;                            // 上一次还在飞：跳过这一轮
+        SAVE_IN_FLIGHT = true;
+        this.setState({status: 'saving'});
+        saveProjectAsName(vm, name)
+            .then(() => {
+                SAVE_IN_FLIGHT = false;
+                this.setState({status: 'saved', at: Date.now(), error: null});
+            })
+            .catch(err => {
+                SAVE_IN_FLIGHT = false;
+                this.setState({status: 'fail', error: (err && err.message) || String(err)});
+            });
+    }
+    render () {
+        const {status, at, error} = this.state;
+        const fail = status === 'fail';
+        let text = T_AUTO_IDLE;
+        if (status === 'saving') text = T_AUTO_SAVING;
+        else if (status === 'saved') text = T_AUTO_SAVED + ' ' + fmtClock(at);
+        else if (status === 'fail') text = T_AUTO_FAIL + (error ? '：' + error : '');
+        return (
+            <div
+                style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    height: 32,
+                    padding: '0 8px',
+                    margin: '0 6px 0 0',
+                    fontSize: 11,
+                    color: fail ? '#d93025' : '#8a919a',
+                    whiteSpace: 'nowrap',
+                    userSelect: 'none',
+                    maxWidth: 260,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis'
+                }}
+                title={text}
+            >
+                {text}
+            </div>
+        );
+    }
+}
+
+AutoSaver.propTypes = {
     vm: PropTypes.object
 };
 

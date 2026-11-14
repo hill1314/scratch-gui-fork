@@ -28,6 +28,7 @@ import SettingsMenu from './settings-menu.jsx';
 import {DEFAULT_SAVE_PATH} from './save-path-settings.jsx';
 import {
     ProjectNameBadge,
+    AutoSaver,
     ProjectStoreModal,
     openSaveDialog,
     openLoadDialog,
@@ -433,6 +434,8 @@ class MenuBar extends React.Component {
                         </div>
                         {/* JARVIS：当前项目名徽标（保存时设置、实时展示） */}
                         <ProjectNameBadge />
+                        {/* JARVIS：编辑过程中每 10 秒自动保存到当前项目（显示最近保存时间） */}
+                        <AutoSaver vm={this.props.vm} />
                         {/* JARVIS：把「项目」里的 新建/保存/打开 抽成项目名后的常驻按钮 */}
                         {(this.props.canManageFiles) && (
                             <React.Fragment>
