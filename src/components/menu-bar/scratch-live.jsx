@@ -430,3 +430,225 @@ LivePresenter.defaultProps = {
 
 export {makeSessionId, watchUrl};
 export default LivePresenter;
+
+// ============================ 常驻观看（无需「开始演示」） ============================
+// 需求（2026-11-21）：把「开始演示」这套手动流程简化掉——其他人应该随时能看，
+// 不需要演示者先点开始、也不需要每次复制一条新链接。
+//
+// 做法：编辑端用固定会话 id 常驻推送当前项目（每 5 秒一帧），观看端固定地址不变，
+// 打开就一直跟随；地址形如 /scratch/player.html?jarvis=1&live=main，另有短入口
+// /scratch/watch 由网关 302 过来。
+
+export const LIVE_AUTO_SID = 'main';
+export const LIVE_AUTO_PUSH_INTERVAL = 5000;
+
+const T_WATCH = '观看';
+const T_WATCH_ADDR = '观看地址（固定不变，别人打开就能看）';
+const T_WATCH_HINT = '不用手动开始：这边编辑的内容会自动同步，别人打开这个地址就能实时看到。';
+const T_WATCH_OPEN = '打开观看页';
+const T_WATCH_OPEN_POPUP = '浏览器拦截了新窗口，请允许弹出窗口或手动复制地址。';
+
+const watchAutoUrl = function () {
+    const origin = (typeof location !== 'undefined' && location.origin) || '';
+    return `${origin}/scratch/player.html?jarvis=1&live=${LIVE_AUTO_SID}`;
+};
+
+/**
+ * 常驻推送端：只要编辑页开着、并且已经选定了项目，就持续把快照推给固定会话。
+ * 页签切到后台时暂停推送，省 CPU；回来后下一次 tick 自然续上。
+ */
+export class LiveAutoPublisher extends React.Component {
+    constructor (props) {
+        super(props);
+        this.state = {error: null, at: 0};
+        this.busy = false;
+        this.timer = null;
+        this.push = this.push.bind(this);
+    }
+    componentDidMount () {
+        this.timer = setInterval(this.push, LIVE_AUTO_PUSH_INTERVAL);
+        this.push();
+    }
+    componentWillUnmount () {
+        if (this.timer) {
+            clearInterval(this.timer);
+            this.timer = null;
+        }
+    }
+    push () {
+        if (typeof document !== 'undefined' && document.hidden) {
+            return;
+        }
+        if (this.busy) {
+            return;
+        }
+        const vm = this.props.vm;
+        if (!vm || typeof vm.saveProjectSb3 !== 'function') {
+            return;
+        }
+        // 只有本页真的载入过项目才推：刚进编辑器时的默认小猫项目不能盖掉观看端
+        let ready = false;
+        let name = '';
+        try {
+            ready = window.__jarvisProjectReady === true;
+            name = (window.localStorage.getItem('jarvis.scratch.projectName') || '').trim();
+        } catch (e) {
+            ready = false;
+            name = '';
+        }
+        if (!ready || !name || name === '未命名') {
+            return;
+        }
+        this.busy = true;
+        exportProjectBase64(vm)
+            .then(data => {
+                if (!data) {
+                    return null;
+                }
+                return fetch(`${LIVE_BASE}/publish`, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        sid: LIVE_AUTO_SID,
+                        title: this.props.title || name,
+                        data
+                    })
+                }).then(r => r.json());
+            })
+            .then(res => {
+                this.busy = false;
+                if (res && res.ok) {
+                    this.setState({error: null, at: Date.now()});
+                } else if (res && res.error) {
+                    this.setState({error: res.error});
+                }
+            })
+            .catch(err => {
+                this.busy = false;
+                this.setState({error: String(err)});
+            });
+    }
+    render () {
+        return null;
+    }
+}
+
+LiveAutoPublisher.propTypes = {
+    title: PropTypes.string,
+    vm: PropTypes.object
+};
+
+/**
+ * 顶栏「观看」入口：一个和「新建项目」等平级的按钮，点开一张只读卡片，
+ * 显示固定观看地址 + 「打开观看页」。没有开始/结束，因为推送是常驻的。
+ */
+export class LiveWatchButton extends React.Component {
+    constructor (props) {
+        super(props);
+        this.state = {open: false, hint: ''};
+        this.toggle = this.toggle.bind(this);
+        this.openWatch = this.openWatch.bind(this);
+    }
+    toggle () {
+        this.setState({open: !this.state.open, hint: ''});
+    }
+    openWatch () {
+        const w = window.open(watchAutoUrl(), '_blank');
+        if (!w) {
+            this.setState({hint: T_WATCH_OPEN_POPUP});
+        }
+    }
+    render () {
+        const {open, hint} = this.state;
+        const item = {
+            display: 'flex',
+            alignItems: 'center',
+            height: '100%',
+            boxSizing: 'border-box',
+            padding: '0 12px',
+            color: '#fff',
+            fontSize: 12,
+            fontWeight: 700,
+            whiteSpace: 'nowrap',
+            cursor: 'pointer',
+            userSelect: 'none'
+        };
+        const card = {
+            position: 'absolute',
+            top: 'calc(100% + 2px)',
+            right: 0,
+            zIndex: 20000,
+            width: 300,
+            boxSizing: 'border-box',
+            padding: 12,
+            background: '#fff',
+            color: '#575e75',
+            borderRadius: 8,
+            boxShadow: '0 12px 30px rgba(0,0,0,.22)',
+            textAlign: 'left',
+            cursor: 'default'
+        };
+        const addr = {
+            width: '100%',
+            boxSizing: 'border-box',
+            padding: '6px 8px',
+            border: '1px solid #d9dde3',
+            borderRadius: 5,
+            background: '#f7f9fc',
+            fontSize: 11,
+            lineHeight: 1.4,
+            color: '#575e75',
+            wordBreak: 'break-all',
+            userSelect: 'all',
+            marginBottom: 8
+        };
+        const primary = {
+            width: '100%',
+            padding: '7px 10px',
+            fontSize: 12,
+            fontFamily: 'inherit',
+            fontWeight: 700,
+            borderRadius: 5,
+            border: 'none',
+            cursor: 'pointer',
+            color: '#fff',
+            background: '#4c97ff',
+            whiteSpace: 'nowrap'
+        };
+        return (
+            <div style={{position: 'relative', height: '100%', display: 'flex',
+                alignItems: 'stretch'}}>
+                <div
+                    style={item}
+                    title={T_WATCH_ADDR}
+                    onMouseUp={this.toggle}
+                >
+                    {T_WATCH}
+                </div>
+                {open ? (
+                    <div style={card}>
+                        <div style={{fontWeight: 700, marginBottom: 6}}>{T_WATCH_ADDR}</div>
+                        <div style={addr}>{watchAutoUrl()}</div>
+                        <div style={{fontSize: 11, lineHeight: 1.45, color: '#7c828b',
+                            marginBottom: 10}}>
+                            {T_WATCH_HINT}
+                        </div>
+                        <button
+                            type="button"
+                            style={primary}
+                            onClick={this.openWatch}
+                        >
+                            {T_WATCH_OPEN}
+                        </button>
+                        {hint ? (
+                            <div style={{fontSize: 11, color: '#d93025', marginTop: 8}}>
+                                {hint}
+                            </div>
+                        ) : null}
+                    </div>
+                ) : null}
+            </div>
+        );
+    }
+}

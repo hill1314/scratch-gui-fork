@@ -50,14 +50,29 @@ const MIME = {
     '.sb3': 'application/octet-stream',
 };
 
+// 开发期自动去缓存：html 里引用的 .js/.css 统一追加构建时间戳，
+// 这样重新构建后普通刷新就能拿到新产物，不用手动清浏览器缓存。
+function buildStamp() {
+    try {
+        const st = fs.statSync(path.join(ROOT, 'player.js'));
+        return String(Math.floor(st.mtimeMs));
+    } catch (e) {
+        return String(Date.now());
+    }
+}
+
+function stampHtml(html) {
+    const v = buildStamp();
+    return html.replace(/(["'])([^"']+\.(?:js|css))\1/g, (m, q, ref) =>
+        (ref.indexOf('?') >= 0 ? m : `${q}${ref}?v=${v}${q}`));
+}
+
 function send(res, code, body, ctype) {
     res.writeHead(code, {
         'Content-Type': ctype,
         'Content-Length': Buffer.byteLength(body),
-        // 静态资源带 hash 的可长缓存，html 不缓存（改了能看到新版）
-        'Cache-Control': ctype.startsWith('text/html')
-            ? 'no-cache'
-            : 'public, max-age=3600',
+        // 本地开发：所有产物都不缓存，重新构建后刷新即可看到新版
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
     });
     res.end(body);
 }
@@ -88,10 +103,22 @@ const server = http.createServer((req, res) => {
                 res.writeHead(200, { 'Content-Type': ctype, 'Content-Length': st.size });
                 return res.end();
             }
+            if (ctype.startsWith('text/html')) {
+                return fs.readFile(target, (e3, buf) => {
+                    if (e3) return send(res, 404, 'Not Found', 'text/plain; charset=utf-8');
+                    const html = stampHtml(buf.toString('utf8'));
+                    res.writeHead(200, {
+                        'Content-Type': ctype,
+                        'Content-Length': Buffer.byteLength(html),
+                        'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    });
+                    return res.end(html);
+                });
+            }
             res.writeHead(200, {
                 'Content-Type': ctype,
                 'Content-Length': st.size,
-                'Cache-Control': ctype.startsWith('text/html') ? 'no-cache' : 'public, max-age=3600',
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
             });
             return fs.createReadStream(target).pipe(res);
         }

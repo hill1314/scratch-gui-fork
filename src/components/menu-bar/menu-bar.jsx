@@ -35,7 +35,7 @@ import {
     setProjectName,
     DEFAULT_PROJECT_NAME
 } from './scratch-projects.jsx';
-import {LivePresenter} from './scratch-live.jsx';
+import {LiveWatchButton, LiveAutoPublisher} from './scratch-live.jsx';
 
 import {openTipsLibrary, openDebugModal} from '../../reducers/modals';
 import {setPlayer} from '../../reducers/mode';
@@ -435,6 +435,13 @@ class MenuBar extends React.Component {
                         <ProjectNameBadge />
                         {/* JARVIS：编辑过程中每 10 秒自动保存到当前项目（显示最近保存时间） */}
                         <AutoSaver vm={this.props.vm} />
+                        {/* JARVIS：常驻把当前项目推给观看端，别人打开固定地址就能看（无需开始演示） */}
+                        {(this.props.canManageFiles) && (
+                            <LiveAutoPublisher
+                                title={this.props.projectTitle}
+                                vm={this.props.vm}
+                            />
+                        )}
                         {/* JARVIS：把「项目」里的 新建/保存/打开 抽成项目名后的常驻按钮 */}
                         {(this.props.canManageFiles) && (
                             <React.Fragment>
@@ -463,11 +470,8 @@ class MenuBar extends React.Component {
                                 >
                                     <span className={styles.mainActionLabel}>{IMPORT_PROJECT_LABEL}</span>
                                 </div>
-                                <LivePresenter
-                                    variant="bar"
-                                    title={this.props.projectTitle}
-                                    vm={this.props.vm}
-                                />
+                                {/* 观看入口：地址固定不变，别人随时可看，不需要先开始/结束演示 */}
+                                <LiveWatchButton />
                             </React.Fragment>
                         )}
                         {this.props.isTotallyNormal && (

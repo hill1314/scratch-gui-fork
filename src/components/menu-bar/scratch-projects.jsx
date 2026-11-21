@@ -140,6 +140,23 @@ export function setProjectName (name) {
 // 所以单独存一份文件名，比靠名字猜更准。
 export const PROJECT_FILE_KEY = 'jarvis.scratch.projectFile';
 
+// 页面级「是否真的载入过项目」标记：只活在当前页面，刷新即失效。
+// 用途：自动保存、直播推送都不能在「只是打开了编辑器」时动手，
+// 否则默认小猫项目会把同名的真实项目覆盖掉。
+export function markProjectReady (ready) {
+    try {
+        window.__jarvisProjectReady = !!ready;
+    } catch (e) {}
+}
+
+export function isProjectReady () {
+    try {
+        return window.__jarvisProjectReady === true;
+    } catch (e) {
+        return false;
+    }
+}
+
 export function getProjectFile () {
     try {
         return (window.localStorage.getItem(PROJECT_FILE_KEY) || '').trim();
@@ -300,6 +317,9 @@ export class ProjectStoreModal extends React.Component {
     openStart () {
         setProjectName('');   // 还没确定项目：先让徽标回到「未命名」，别显示上次的名字
         setProjectFile('');   // 启动阶段还没打开任何项目，列表里不该有高亮
+        // 本页实例还没真正载入过项目：自动保存/直播推送都必须按兵不动，
+        // 否则一打开编辑器就用默认小猫项目把用户的 .sb3 覆盖掉
+        markProjectReady(false);
         this.setState({
             mode: 'start', name: '', error: null, busy: false,
             listError: null, loadingList: true, projects: [], root: '',
@@ -366,6 +386,7 @@ export class ProjectStoreModal extends React.Component {
         saveProjectAsName(vm, name)
             .then(() => {
                 SAVE_IN_FLIGHT = false;
+                markProjectReady(true);
                 this.setState({
                     busy: false, mode: null,
                     startSettled: isStart ? true : this.state.startSettled
@@ -392,6 +413,7 @@ export class ProjectStoreModal extends React.Component {
             .then(() => {
                 setProjectName(name);
                 setProjectFile(file);
+                markProjectReady(true);
                 this.setState({loadingFile: null, mode: null, startSettled: true});
             })
             .catch(err => this.setState({
@@ -924,6 +946,7 @@ export class AutoSaver extends React.Component {
     tick () {
         const vm = this.props.vm;
         if (!vm || !vm.saveProjectSb3) return;
+        if (!isProjectReady()) return;                        // 本页还没载入项目：不自动保存
         const name = getProjectName();
         if (!name || name === DEFAULT_PROJECT_NAME) return;   // 没选定项目：不自动保存
         if (SAVE_IN_FLIGHT) return;                            // 上一次还在飞：跳过这一轮
