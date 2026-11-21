@@ -35,9 +35,11 @@ const T_EMPTY_HINT = '统一项目目录还没有项目，先去「项目 ▸ �
 const T_LOADING_FILE = '加载中…';
 const T_OPEN = '打开 ▸';
 const T_STORE_LOC = '统一存储位置：';
-// 项目列表行的操作（删除 / 重命名）
+// 项目列表行的操作（删除 / 重命名 / 复制）
 const T_RENAME = '重命名';
 const T_DELETE = '删除';
+const T_COPY = '复制';
+const T_COPY_TITLE = '复制一份项目（原项目不受影响）';
 const T_RENAME_TITLE = '重命名项目';
 const T_RENAME_LABEL = '新的项目名称';
 const T_RENAME_BTN = '确定';
@@ -236,6 +238,7 @@ export class ProjectStoreModal extends React.Component {
         this.onRenameInput = this.onRenameInput.bind(this);
         this.doRename = this.doRename.bind(this);
         this.doDelete = this.doDelete.bind(this);
+        this.doCopy = this.doCopy.bind(this);
     }
     componentDidMount () {
         window.addEventListener('jarvis-open-save', this.openSave);
@@ -415,6 +418,31 @@ export class ProjectStoreModal extends React.Component {
             .then(r => r.json().then(res => {
                 if (!r.ok || !res || !res.ok) {
                     throw new Error((res && res.error) || ('删除失败（HTTP ' + r.status + '）'));
+                }
+                return res;
+            }))
+            .then(() => {
+                this.setState({rowBusy: null});
+                return this.refreshList();
+            })
+            .catch(err => this.setState({
+                rowBusy: null,
+                listError: (err && err.message) || String(err)
+            }));
+    }
+    // ---------- 项目复制 ----------
+    // 孩子改坏自己的作品时常要「留个备份再试」，所以复制是独立操作：
+    // 服务端自动命名「原名 副本」，原项目不动，不弹确认框。
+    doCopy (p) {
+        this.setState({rowBusy: p.file, listError: null});
+        fetch('/api/scratch/copy', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({file: p.file})
+        })
+            .then(r => r.json().then(res => {
+                if (!r.ok || !res || !res.ok) {
+                    throw new Error((res && res.error) || ('复制失败（HTTP ' + r.status + '）'));
                 }
                 return res;
             }))
@@ -644,6 +672,23 @@ export class ProjectStoreModal extends React.Component {
                                                 <span style={{fontSize: 12, color: '#4c97ff'}}>{T_LOADING_FILE}</span>
                                             ) : (
                                                 <span style={{display: 'flex', alignItems: 'center', gap: 4}}>
+                                                    <button
+                                                        type="button"
+                                                        disabled={isRowBusy || !!this.state.loadingFile}
+                                                        title={T_COPY_TITLE}
+                                                        onClick={e => {
+                                                            e.stopPropagation();
+                                                            this.doCopy(p);
+                                                        }}
+                                                        style={{
+                                                            padding: '4px 8px', fontSize: 12,
+                                                            borderRadius: 5, whiteSpace: 'nowrap',
+                                                            border: '1px solid #c9cdd4', background: '#fff',
+                                                            color: '#575e75', cursor: 'pointer'
+                                                        }}
+                                                    >
+                                                        {T_COPY}
+                                                    </button>
                                                     <button
                                                         type="button"
                                                         disabled={isRowBusy || !!this.state.loadingFile}
