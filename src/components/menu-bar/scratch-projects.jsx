@@ -39,6 +39,7 @@ const T_STORE_LOC = '统一存储位置：';
 const T_RENAME = '重命名';
 const T_DELETE = '删除';
 const T_COPY = '复制';
+const T_CURRENT = '当前打开';
 const T_COPY_TITLE = '复制一份项目（原项目不受影响）';
 const T_RENAME_TITLE = '重命名项目';
 const T_RENAME_LABEL = '新的项目名称';
@@ -104,7 +105,8 @@ function saveProjectAsName (vm, name) {
                 .then(res => {
                     if (!res || !res.ok) throw new Error((res && res.error) || '保存失败');
                     setProjectName(name);
-                    return true;
+                    setProjectFile(res.file || '');
+                    return res.file || '';
                 });
         });
 }
@@ -128,6 +130,33 @@ export function setProjectName (name) {
     try {
         window.dispatchEvent(new CustomEvent('jarvis-project-name-changed', {
             detail: {name: name || ''}
+        }));
+    } catch (e) {
+        // 事件派发失败也不影响主流程
+    }
+}
+
+// 当前打开的是哪个文件（用于项目列表高亮）。名字可能重名、也可能与文件名不同，
+// 所以单独存一份文件名，比靠名字猜更准。
+export const PROJECT_FILE_KEY = 'jarvis.scratch.projectFile';
+
+export function getProjectFile () {
+    try {
+        return (window.localStorage.getItem(PROJECT_FILE_KEY) || '').trim();
+    } catch (e) {
+        return '';
+    }
+}
+
+export function setProjectFile (file) {
+    try {
+        window.localStorage.setItem(PROJECT_FILE_KEY, file || '');
+    } catch (e) {
+        // 隐私模式等场景 localStorage 不可写，忽略即可
+    }
+    try {
+        window.dispatchEvent(new CustomEvent('jarvis-project-file-changed', {
+            detail: {file: file || ''}
         }));
     } catch (e) {
         // 事件派发失败也不影响主流程
@@ -222,7 +251,8 @@ export class ProjectStoreModal extends React.Component {
             loadingFile: null,   // 正在加载的项目名
             renamingFile: null,  // 正在重命名的项目文件名（null 表示未处于重命名）
             renameValue: '',     // 重命名输入框内容
-            rowBusy: null        // 正在删除/重命名中的项目文件名
+            rowBusy: null,       // 正在删除/重命名中的项目文件名
+            currentFile: getProjectFile()   // 当前打开的项目文件名，用于列表高亮
         };
         this.maybeOpenStart = this.maybeOpenStart.bind(this);
         this.openStart = this.openStart.bind(this);
@@ -239,10 +269,16 @@ export class ProjectStoreModal extends React.Component {
         this.doRename = this.doRename.bind(this);
         this.doDelete = this.doDelete.bind(this);
         this.doCopy = this.doCopy.bind(this);
+        this.onProjectFileChanged = this.onProjectFileChanged.bind(this);
+    }
+    onProjectFileChanged (e) {
+        const file = (e && e.detail && e.detail.file) || '';
+        if (file !== this.state.currentFile) this.setState({currentFile: file});
     }
     componentDidMount () {
         window.addEventListener('jarvis-open-save', this.openSave);
         window.addEventListener('jarvis-open-load', this.openLoad);
+        window.addEventListener('jarvis-project-file-changed', this.onProjectFileChanged);
         this.maybeOpenStart();
     }
     componentDidUpdate () {
@@ -252,6 +288,7 @@ export class ProjectStoreModal extends React.Component {
     componentWillUnmount () {
         window.removeEventListener('jarvis-open-save', this.openSave);
         window.removeEventListener('jarvis-open-load', this.openLoad);
+        window.removeEventListener('jarvis-project-file-changed', this.onProjectFileChanged);
     }
     // 启动选择：只要编辑器就绪、且还没处理过，就强制弹一次「选项目 / 新建项目」
     maybeOpenStart () {
@@ -262,6 +299,7 @@ export class ProjectStoreModal extends React.Component {
     }
     openStart () {
         setProjectName('');   // 还没确定项目：先让徽标回到「未命名」，别显示上次的名字
+        setProjectFile('');   // 启动阶段还没打开任何项目，列表里不该有高亮
         this.setState({
             mode: 'start', name: '', error: null, busy: false,
             listError: null, loadingList: true, projects: [], root: '',
@@ -276,7 +314,8 @@ export class ProjectStoreModal extends React.Component {
         this.setState({
             mode: 'load', error: null, listError: null,
             loadingList: true, projects: [], root: '',
-            renamingFile: null, rowBusy: null
+            renamingFile: null, rowBusy: null,
+            currentFile: getProjectFile()   // 重新读一次，页面刷新后也能对上
         });
         this.refreshList();
     }
@@ -352,6 +391,7 @@ export class ProjectStoreModal extends React.Component {
             })
             .then(() => {
                 setProjectName(name);
+                setProjectFile(file);
                 this.setState({loadingFile: null, mode: null, startSettled: true});
             })
             .catch(err => this.setState({
@@ -392,9 +432,12 @@ export class ProjectStoreModal extends React.Component {
                 return res;
             }))
             .then(res => {
-                // 若重命名的正是当前打开的项目，同步更新顶栏徽标
+                // 若重命名的正是当前打开的项目，同步更新顶栏徽标与高亮标记
                 if (getProjectName() === p.name) {
                     setProjectName(res.name);
+                }
+                if (this.state.currentFile === p.file) {
+                    setProjectFile(res.file || '');
                 }
                 this.setState({rowBusy: null, renamingFile: null, renameValue: ''});
                 return this.refreshList();
@@ -422,6 +465,11 @@ export class ProjectStoreModal extends React.Component {
                 return res;
             }))
             .then(() => {
+                // 删掉的正好是当前打开的项目：清掉高亮，别留一个不存在的标记
+                if (this.state.currentFile === p.file) {
+                    setProjectFile('');
+                    setProjectName('');
+                }
                 this.setState({rowBusy: null});
                 return this.refreshList();
             })
@@ -580,6 +628,8 @@ export class ProjectStoreModal extends React.Component {
                                 {this.state.projects.map(p => {
                                     const isRenaming = this.state.renamingFile === p.file;
                                     const isRowBusy = this.state.rowBusy === p.file;
+                                    const isCurrent = !!this.state.currentFile &&
+                                        this.state.currentFile === p.file;
                                     if (isRenaming) {
                                         // 重命名态：整行换成输入框 + 确定/取消，避免误触打开
                                         return (
@@ -648,21 +698,43 @@ export class ProjectStoreModal extends React.Component {
                                                 display: 'flex', alignItems: 'center',
                                                 justifyContent: 'space-between', gap: 10,
                                                 padding: '10px 12px', marginBottom: 6,
-                                                borderRadius: 6, border: '1px solid #e5e7eb',
-                                                cursor: 'pointer', background: '#fafbfc'
+                                                borderRadius: 6,
+                                                border: isCurrent ? '1px solid #4c97ff' : '1px solid #e5e7eb',
+                                                cursor: 'pointer',
+                                                background: isCurrent ? '#eaf2ff' : '#fafbfc',
+                                                boxShadow: isCurrent ? 'inset 3px 0 0 #4c97ff' : 'none'
                                             }}
-                                            onMouseEnter={e => { e.currentTarget.style.background = '#f0f4ff'; }}
-                                            onMouseLeave={e => { e.currentTarget.style.background = '#fafbfc'; }}
+                                            onMouseEnter={e => {
+                                                e.currentTarget.style.background = isCurrent ? '#eaf2ff' : '#f0f4ff';
+                                            }}
+                                            onMouseLeave={e => {
+                                                e.currentTarget.style.background = isCurrent ? '#eaf2ff' : '#fafbfc';
+                                            }}
                                         >
                                             <div style={{minWidth: 0, flex: 1}}>
-                                                <div
-                                                    style={{
-                                                        fontSize: 14, fontWeight: 600,
-                                                        whiteSpace: 'nowrap', overflow: 'hidden',
-                                                        textOverflow: 'ellipsis'
-                                                    }}
-                                                >
-                                                    {p.name}
+                                                <div style={{display: 'flex', alignItems: 'center', minWidth: 0}}>
+                                                    <div
+                                                        style={{
+                                                            fontSize: 14, fontWeight: 600, minWidth: 0,
+                                                            whiteSpace: 'nowrap', overflow: 'hidden',
+                                                            textOverflow: 'ellipsis'
+                                                        }}
+                                                    >
+                                                        {p.name}
+                                                    </div>
+                                                    {isCurrent ? (
+                                                        <span
+                                                            style={{
+                                                                flex: 'none', marginLeft: 6,
+                                                                padding: '1px 7px', fontSize: 10, lineHeight: '14px',
+                                                                fontWeight: 600, color: '#fff',
+                                                                background: '#4c97ff', borderRadius: 9,
+                                                                whiteSpace: 'nowrap'
+                                                            }}
+                                                        >
+                                                            {T_CURRENT}
+                                                        </span>
+                                                    ) : null}
                                                 </div>
                                                 <div style={{fontSize: 11, color: '#969da5'}}>
                                                     {fmtSize(p.size)} · {fmtTime(p.mtime)}
