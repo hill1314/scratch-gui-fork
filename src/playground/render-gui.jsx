@@ -39,9 +39,9 @@ export default appTarget => {
         HashParserHOC
     )(GUI);
 
-    // TODO a hack for testing the backpack, allow backpack host to be set by url param
+    // 背包默认指向本地 jarvis 的背包接口（跨项目复制），URL 参数仍可覆盖
     const backpackHostMatches = window.location.href.match(/[?&]backpack_host=([^&]*)&?/);
-    const backpackHost = backpackHostMatches ? backpackHostMatches[1] : null;
+    const backpackHost = backpackHostMatches ? backpackHostMatches[1] : '/api/backpack';
 
     const scratchDesktopMatches = window.location.href.match(/[?&]isScratchDesktop=([^&]+)/);
     let simulateScratchDesktop;
@@ -76,6 +76,7 @@ export default appTarget => {
             <WrappedGui
                 canEditTitle
                 backpackHost={backpackHost}
+                backpackVisible
                 canSave={false}
                 onClickLogo={onClickLogo}
             />,

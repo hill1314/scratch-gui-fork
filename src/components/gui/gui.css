@@ -202,6 +202,7 @@
         Only reason we need this, is so .targetWrapper, which holds the selectors,
         goes to full vertical height of the window
     */
+    position: relative;
     display: flex;
     flex-direction: column;
     /* pad entire wrapper to the left and right; allow children to fill width */
@@ -356,6 +357,20 @@ $fade-out-distance: 15px;
         min-width: 0;
         padding-left: 0;
         padding-right: 0;
+        position: relative;
+        padding-bottom: 2.4rem;
+    }
+
+    /* 舞台段里贴底的书包条：窄屏下角色列表和书包同屏，才拖得动 */
+    :global(.jarvis-backpack-stage) {
+        display: block;
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 6;
+        background: $ui-white;
+        border-top: 1px solid $ui-black-transparent;
     }
 
     /* 积木面板（工具箱）在窄屏要变窄，否则代码区没地方 */
@@ -402,6 +417,11 @@ $fade-out-distance: 15px;
 /* 宽屏（>=768px）下切换条不显示，保持原有桌面布局 */
 @media only screen and (min-width: 768px) {
     :global(.jarvis-mobile-pane-switch) {
+        display: none !important;
+    }
+
+    /* 宽屏用代码段原生的书包，舞台段这条浮层不显示 */
+    :global(.jarvis-backpack-stage) {
         display: none !important;
     }
 }

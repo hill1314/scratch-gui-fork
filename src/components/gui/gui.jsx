@@ -369,6 +369,12 @@ const GUIComponent = props => {
                                     vm={vm}
                                 />
                             </Box>
+                            {/* 窄屏只有「舞台」段可见，背包若只挂在代码段就用不上，这里补一条贴底浮层 */}
+                            <div className="jarvis-backpack-stage">
+                                {backpackVisible ? (
+                                    <Backpack host={backpackHost} />
+                                ) : null}
+                            </div>
                         </Box>
                     </Box>
                 </Box>

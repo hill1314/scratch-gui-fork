@@ -250,13 +250,12 @@ const getTokenAndUsername = state => {
             username: state.session.session.user.username
         };
     }
-    // Otherwise try to pull testing params out of the URL, or return nulls
-    // TODO a hack for testing the backpack
+    // 本地版没有账号体系，背包后端也不校验身份，固定用 local 即可
     const tokenMatches = window.location.href.match(/[?&]token=([^&]*)&?/);
     const usernameMatches = window.location.href.match(/[?&]username=([^&]*)&?/);
     return {
-        token: tokenMatches ? tokenMatches[1] : null,
-        username: usernameMatches ? usernameMatches[1] : null
+        token: tokenMatches ? tokenMatches[1] : 'local',
+        username: usernameMatches ? usernameMatches[1] : 'local'
     };
 };
 
