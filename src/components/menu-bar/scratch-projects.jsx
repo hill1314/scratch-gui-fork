@@ -152,6 +152,19 @@ export function markProjectReady (ready) {
     } catch (e) {}
 }
 
+// 画布是否还是「默认空白项目」：只有 Stage + 一个角色、没有任何积木。
+// 自动保存碰到这种情况一律跳过，避免默认小猫项目把同名的真实项目覆盖掉。
+export function isBlankProject (vm) {
+    const runtime = vm && vm.runtime;
+    if (!runtime || !runtime.targets) return false;
+    let blocks = 0;
+    runtime.targets.forEach(t => {
+        const map = t.blocks && t.blocks._blocks;
+        if (map) blocks += Object.keys(map).length;
+    });
+    return blocks === 0 && runtime.targets.length <= 2;
+}
+
 export function isProjectReady () {
     try {
         return window.__jarvisProjectReady === true;
@@ -1033,6 +1046,7 @@ export class AutoSaver extends React.Component {
         const vm = this.props.vm;
         if (!vm || !vm.saveProjectSb3) return;
         if (!isProjectReady()) return;                        // 本页还没载入项目：不自动保存
+        if (isBlankProject(vm)) return;                        // 画布还是默认空白：别拿它覆盖真实项目
         const name = getProjectName();
         if (!name || name === DEFAULT_PROJECT_NAME) return;   // 没选定项目：不自动保存
         if (SAVE_IN_FLIGHT) return;                            // 上一次还在飞：跳过这一轮
