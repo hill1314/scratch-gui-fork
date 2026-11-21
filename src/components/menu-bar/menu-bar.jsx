@@ -88,7 +88,6 @@ import profileIcon from './icon--profile.png';
 import remixIcon from './icon--remix.svg';
 import dropdownCaret from './dropdown-caret.svg';
 import aboutIcon from './icon--about.svg';
-import fileIcon from './icon--file.svg';
 import debugIcon from '../debug-modal/icons/icon--debug.svg';
 
 import scratchLogo from './scratch-logo.svg';
@@ -443,82 +442,33 @@ class MenuBar extends React.Component {
                                     className={classNames(styles.menuBarItem, styles.hoverable)}
                                     onClick={this.handleClickNew}
                                 >
-                                    <span className={styles.collapsibleLabel}>{NEW_PROJECT_LABEL}</span>
+                                    <span className={styles.mainActionLabel}>{NEW_PROJECT_LABEL}</span>
                                 </div>
                                 <div
                                     className={classNames(styles.menuBarItem, styles.hoverable)}
                                     onClick={this.handleSaveToLocal}
                                 >
-                                    <span className={styles.collapsibleLabel}>{SAVE_TO_LOCAL_LABEL}</span>
+                                    <span className={styles.mainActionLabel}>{SAVE_TO_LOCAL_LABEL}</span>
                                 </div>
                                 <div
                                     className={classNames(styles.menuBarItem, styles.hoverable)}
                                     onClick={openLoadDialog}
                                 >
-                                    <span className={styles.collapsibleLabel}>{OPEN_LOCAL_LABEL}</span>
+                                    <span className={styles.mainActionLabel}>{OPEN_LOCAL_LABEL}</span>
                                 </div>
-                            </React.Fragment>
-                        )}
-                        {(this.props.canManageFiles) && (
-                            <div
-                                className={classNames(styles.menuBarItem, styles.hoverable, {
-                                    [styles.active]: this.props.fileMenuOpen
-                                })}
-                                onMouseUp={this.props.onClickFile}
-                            >
-                                <img src={fileIcon} />
-                                <span className={styles.collapsibleLabel}>
-                                    <FormattedMessage
-                                        defaultMessage="File"
-                                        description="Text for file dropdown menu"
-                                        id="gui.menuBar.file"
-                                    />
-                                </span>
-                                <img src={dropdownCaret} />
-                                <MenuBarMenu
-                                    className={classNames(styles.menuBarMenu)}
-                                    open={this.props.fileMenuOpen}
-                                    place={this.props.isRtl ? 'left' : 'right'}
-                                    onRequestClose={this.props.onRequestCloseFile}
+                                {/* 原「项目」下拉里的两项，现在直接和上面三项平级铺在顶栏上 */}
+                                <div
+                                    className={classNames(styles.menuBarItem, styles.hoverable)}
+                                    onClick={this.props.onStartSelectingFileUpload}
                                 >
-                                    {(this.props.canSave || this.props.canCreateCopy || this.props.canRemix) && (
-                                        <MenuSection>
-                                            {this.props.canSave && (
-                                                <MenuItem onClick={this.handleClickSave}>
-                                                    {saveNowMessage}
-                                                </MenuItem>
-                                            )}
-                                            {this.props.canCreateCopy && (
-                                                <MenuItem onClick={this.handleClickSaveAsCopy}>
-                                                    {createCopyMessage}
-                                                </MenuItem>
-                                            )}
-                                            {this.props.canRemix && (
-                                                <MenuItem onClick={this.handleClickRemix}>
-                                                    {remixMessage}
-                                                </MenuItem>
-                                            )}
-                                        </MenuSection>
-                                    )}
-                                    <MenuSection>
-                                        {/* 「从电脑打开」改为「导入项目文件」：项目统一存在当前 Mac 上，
-                                            这一项的本质是上传一个外部 .sb3（别人发的、或从旧设备迁移来），
-                                            叫「从电脑打开」会和顶栏的「打开项目」混淆。 */}
-                                        <MenuItem
-                                            onClick={this.props.onStartSelectingFileUpload}
-                                        >
-                                            {IMPORT_PROJECT_LABEL}
-                                        </MenuItem>
-                                    </MenuSection>
-                                    {/* 直播观看：演示者推、其他设备只读围观（单向，避免互相覆盖） */}
-                                    <MenuSection>
-                                        <LivePresenter
-                                            title={this.props.projectTitle}
-                                            vm={this.props.vm}
-                                        />
-                                    </MenuSection>
-                                </MenuBarMenu>
-                            </div>
+                                    <span className={styles.mainActionLabel}>{IMPORT_PROJECT_LABEL}</span>
+                                </div>
+                                <LivePresenter
+                                    variant="bar"
+                                    title={this.props.projectTitle}
+                                    vm={this.props.vm}
+                                />
+                            </React.Fragment>
                         )}
                         {this.props.isTotallyNormal && (
                             <div

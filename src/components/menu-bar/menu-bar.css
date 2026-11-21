@@ -228,6 +228,29 @@
     margin: 0 0.25rem 0 0.5rem;
 }
 
+/* JARVIS 定制：新建 / 保存 / 打开 / 导入 是顶栏主操作，
+   官方的 .collapsible-label 会在 <=1024px 收起文字，这里反过来——始终显示。 */
+.main-action-label {
+    margin: 0 .5rem 0 .25rem;
+    font-size: .75rem;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+@media only screen and (max-width: 1023px) {
+    .main-action-label {
+        margin: 0 .3rem;
+        font-size: .7rem;
+    }
+}
+
+@media only screen and (max-width: 767px) {
+    .main-action-label {
+        margin: 0 .18rem;
+        font-size: .64rem;
+    }
+}
+
 @media only screen and (max-width: 1024px) {
     .tutorials-label, .collapsible-label, .debug-label{
         display: none;

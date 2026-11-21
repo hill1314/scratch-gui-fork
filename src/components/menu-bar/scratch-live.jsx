@@ -25,6 +25,10 @@ const T_LIVE_HINT = '把下面链接发给其他设备，他们打开即可实�
 const T_LIVE_COPY = '复制链接';
 const T_LIVE_COPIED = '已复制';
 const T_LIVE_ERR = '连接失败：';
+// 顶栏平铺形态（variant="bar"）用的短文案
+const T_LIVE_BAR_START = '开始演示';
+const T_LIVE_BAR_ON = '演示中';
+const T_LIVE_CLOSE = '收起';
 
 // 演示端推送间隔（毫秒）。太短会频繁打包 sb3 拖慢编辑，太长则观看端迟钝。
 export const LIVE_PUSH_INTERVAL = 3000;
@@ -89,7 +93,8 @@ export class LivePresenter extends React.Component {
             sid: null,
             seq: 0,
             copied: false,
-            error: null
+            error: null,
+            showPanel: false,   // 顶栏形态下，演示链接卡片的展开状态
         };
         this.timer = null;
         this.lastPushAt = 0;
@@ -98,13 +103,26 @@ export class LivePresenter extends React.Component {
         this.handleStart = this.handleStart.bind(this);
         this.handleStop = this.handleStop.bind(this);
         this.handleCopy = this.handleCopy.bind(this);
+        this.handleBarClick = this.handleBarClick.bind(this);
+        this.togglePanel = this.togglePanel.bind(this);
     }
     componentWillUnmount () {
         this.handleStop(true);
     }
+    // 顶栏形态：没在演示就一键开播，已在演示就展开/收起链接卡片
+    handleBarClick () {
+        if (this.state.sid) {
+            this.togglePanel();
+        } else {
+            this.handleStart();
+        }
+    }
+    togglePanel () {
+        this.setState({showPanel: !this.state.showPanel});
+    }
     handleStart () {
         const sid = makeSessionId();
-        this.setState({sid, seq: 0, error: null, copied: false});
+        this.setState({sid, seq: 0, error: null, copied: false, showPanel: true});
         this.lastPushAt = 0;
         this.timer = setInterval(this.handleTick, LIVE_PUSH_INTERVAL);
         // 立刻推第一帧，观看端不用等一个周期
@@ -124,7 +142,7 @@ export class LivePresenter extends React.Component {
                 body: JSON.stringify({sid})
             }).catch(() => {});
         }
-        this.setState({sid: null, seq: 0, copied: false});
+        this.setState({sid: null, seq: 0, copied: false, showPanel: false});
     }
     handleTick () {
         // 上一次还没推完就跳过，避免请求堆积
@@ -184,7 +202,130 @@ export class LivePresenter extends React.Component {
             this.setState({error: T_LIVE_COPY_FAIL});
         }
     }
+    // 顶栏平铺形态：一个和「新建/保存/打开」同级的按钮，点一下直接开播，
+    // 开播后按钮变成「● 演示中」，再点展开链接卡片（复制/结束演示都在卡片里）。
+    renderBar () {
+        const {sid, seq, copied, error, showPanel} = this.state;
+        const item = {
+            display: 'flex',
+            alignItems: 'center',
+            height: '100%',
+            boxSizing: 'border-box',
+            padding: '0 12px',
+            color: '#fff',
+            fontSize: 12,
+            fontWeight: 700,
+            whiteSpace: 'nowrap',
+            cursor: 'pointer',
+            userSelect: 'none'
+        };
+        const card = {
+            position: 'absolute',
+            top: 'calc(100% + 2px)',
+            right: 0,
+            zIndex: 20000,
+            width: 300,
+            boxSizing: 'border-box',
+            padding: 12,
+            background: '#fff',
+            color: '#575e75',
+            borderRadius: 8,
+            boxShadow: '0 12px 30px rgba(0,0,0,.22)',
+            textAlign: 'left',
+            cursor: 'default'
+        };
+        const primary = {
+            flex: 1,
+            padding: '7px 10px',
+            fontSize: 12,
+            fontFamily: 'inherit',
+            fontWeight: 700,
+            borderRadius: 5,
+            border: 'none',
+            cursor: 'pointer',
+            color: '#fff',
+            background: '#4c97ff',
+            whiteSpace: 'nowrap'
+        };
+        const danger = Object.assign({}, primary, {background: '#ff6680'});
+        const linkBox = {
+            width: '100%',
+            boxSizing: 'border-box',
+            padding: '6px 8px',
+            border: '1px solid #d9dde3',
+            borderRadius: 5,
+            background: '#f7f9fc',
+            fontSize: 11,
+            lineHeight: 1.4,
+            color: '#575e75',
+            wordBreak: 'break-all',
+            userSelect: 'all',
+            marginBottom: 8
+        };
+        return (
+            <div style={{position: 'relative', height: '100%', display: 'flex',
+                alignItems: 'stretch'}}>
+                <div
+                    style={item}
+                    title={sid ? T_LIVE_TITLE : T_LIVE_START}
+                    onMouseUp={this.handleBarClick}
+                >
+                    {sid ? `${T_LIVE_DOT} ${T_LIVE_BAR_ON}` : T_LIVE_BAR_START}
+                </div>
+                {sid && showPanel ? (
+                    <div style={card}>
+                        <div style={{display: 'flex', alignItems: 'center',
+                            justifyContent: 'space-between', marginBottom: 6}}>
+                            <span style={{color: '#0f9d58', fontWeight: 700}}>
+                                {`${T_LIVE_DOT} ${T_LIVE_TITLE}${T_LIVE_FRAME_OPEN}` +
+                                    `${seq}${T_LIVE_FRAME_CLOSE}`}
+                            </span>
+                            <button
+                                type="button"
+                                onClick={this.togglePanel}
+                                style={{
+                                    border: 'none', background: 'none', padding: 0,
+                                    color: '#8a919a', fontSize: 11, cursor: 'pointer'
+                                }}
+                            >
+                                {T_LIVE_CLOSE}
+                            </button>
+                        </div>
+                        <div style={{fontSize: 11, lineHeight: 1.45, color: '#7c828b',
+                            marginBottom: 8}}>
+                            {T_LIVE_HINT}
+                        </div>
+                        <div style={linkBox}>{watchUrl(sid)}</div>
+                        <div style={{display: 'flex', gap: 8}}>
+                            <button
+                                type="button"
+                                style={primary}
+                                onClick={this.handleCopy}
+                            >
+                                {copied ? T_LIVE_COPIED : T_LIVE_COPY}
+                            </button>
+                            <button
+                                type="button"
+                                style={danger}
+                                onClick={this.handleStop}
+                            >
+                                {T_LIVE_STOP}
+                            </button>
+                        </div>
+                        {error ? (
+                            <div style={{fontSize: 11, color: '#d93025', marginTop: 8}}>
+                                {`${T_LIVE_ERR}${error}`}
+                            </div>
+                        ) : null}
+                    </div>
+                ) : null}
+            </div>
+        );
+    }
     render () {
+        if (this.props.variant === 'bar') {
+            return this.renderBar();
+        }
         const wrap = {padding: '8px 10px 10px',
             width: '100%',
             boxSizing: 'border-box',
@@ -280,7 +421,11 @@ export class LivePresenter extends React.Component {
 
 LivePresenter.propTypes = {
     title: PropTypes.string,
+    variant: PropTypes.oneOf(['menu', 'bar']),
     vm: PropTypes.object
+};
+LivePresenter.defaultProps = {
+    variant: 'menu'
 };
 
 export {makeSessionId, watchUrl};
