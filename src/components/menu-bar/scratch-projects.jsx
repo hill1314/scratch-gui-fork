@@ -62,6 +62,9 @@ const T_START_CREATING = '创建中…';
 const T_START_OPEN_SECTION = '打开已有项目';
 const T_START_EMPTY = '还没有项目，直接在上面新建一个吧。';
 const T_RELOAD = '刷新列表';
+const T_NEW_AUTOSAVED_PREFIX = '原项目「';
+const T_NEW_AUTOSAVED_SUFFIX = '」已自动保存。';
+const T_NEW_NEED_NAME = '给新项目起个名字再开始，避免和已有项目混在一起。';
 // 自动保存（每 10 秒一次，静默覆盖同名文件）
 export const AUTOSAVE_INTERVAL_MS = 10000;
 const T_AUTO_SAVING = '保存中…';
@@ -257,6 +260,8 @@ export class ProjectStoreModal extends React.Component {
         super(props);
         this.state = {
             mode: null,          // null | 'start' | 'save' | 'load'
+            notice: '',          // 弹窗顶部的绿色提示（例如「原项目已自动保存」）
+            allowStartCancel: false, // 「新建」进到命名弹窗后允许取消（首次进站仍必须选项目）
             startSettled: false, // 启动选择弹窗是否已经处理过（选过项目后不再自动弹）
             name: '',
             busy: false,
@@ -273,6 +278,8 @@ export class ProjectStoreModal extends React.Component {
         };
         this.maybeOpenStart = this.maybeOpenStart.bind(this);
         this.openStart = this.openStart.bind(this);
+        this.openCreate = this.openCreate.bind(this);
+        this.cancelCreate = this.cancelCreate.bind(this);
         this.openSave = this.openSave.bind(this);
         this.openLoad = this.openLoad.bind(this);
         this.close = this.close.bind(this);
@@ -294,6 +301,7 @@ export class ProjectStoreModal extends React.Component {
     }
     componentDidMount () {
         window.addEventListener('jarvis-open-save', this.openSave);
+        window.addEventListener('jarvis-open-create', this.openCreate);
         window.addEventListener('jarvis-open-load', this.openLoad);
         window.addEventListener('jarvis-project-file-changed', this.onProjectFileChanged);
         this.maybeOpenStart();
@@ -304,6 +312,7 @@ export class ProjectStoreModal extends React.Component {
     }
     componentWillUnmount () {
         window.removeEventListener('jarvis-open-save', this.openSave);
+        window.removeEventListener('jarvis-open-create', this.openCreate);
         window.removeEventListener('jarvis-open-load', this.openLoad);
         window.removeEventListener('jarvis-project-file-changed', this.onProjectFileChanged);
     }
@@ -322,10 +331,54 @@ export class ProjectStoreModal extends React.Component {
         markProjectReady(false);
         this.setState({
             mode: 'start', name: '', error: null, busy: false,
+            allowStartCancel: false,
             listError: null, loadingList: true, projects: [], root: '',
             renamingFile: null, rowBusy: null, loadingFile: null
         });
         this.refreshList();
+    }
+    /**
+     * 顶栏「新建项目」：如果当前确实打开着某个项目，先把它的最新画布存盘，
+     * 存成功后再弹「给新项目命名」，避免一路新建把上一個项目丢掉或落在旧文件名下。
+     */
+    openCreate () {
+        const vm = this.props.vm;
+        const name = getProjectName();
+        const needSave = isProjectReady() && name && name !== DEFAULT_PROJECT_NAME &&
+            vm && vm.saveProjectSb3;
+        // 记住当前项目：命名弹窗里点取消要能回到它继续改
+        this.prevName = name || '';
+        this.prevFile = getProjectFile() || '';
+        if (!needSave) {
+            this.openStart();
+            this.setState({allowStartCancel: true});
+            return;
+        }
+        this.setState({busy: true, error: null, notice: ''});
+        saveProjectAsName(vm, name)
+            .then(() => {
+                this.openStart();
+                this.setState({
+                    busy: false, allowStartCancel: true,
+                    notice: T_NEW_AUTOSAVED_PREFIX + name + T_NEW_AUTOSAVED_SUFFIX
+                });
+            })
+            .catch(err => {
+                // 原项目没存成功就不要往下走：宁可什么都不发生，也不让它被新项目顶掉
+                this.setState({
+                    busy: false,
+                    error: '原项目保存失败，已取消新建：' + ((err && err.message) || String(err))
+                });
+            });
+    }
+    // 命名弹窗里反悔：回到原来的项目接着改（画布没被清过，只需把名字/高亮恢复）
+    cancelCreate () {
+        if (this.prevName) {
+            setProjectName(this.prevName);
+            setProjectFile(this.prevFile || '');
+            markProjectReady(true);
+        }
+        this.setState({mode: null, allowStartCancel: false, notice: '', error: null, busy: false});
     }
     openSave () {
         this.setState({mode: 'save', name: getProjectName(), error: null, busy: false});
@@ -553,6 +606,17 @@ export class ProjectStoreModal extends React.Component {
                     {isStart && (
                         <div style={{fontSize: 12, color: '#575e75', marginBottom: 14}}>
                             {T_START_HINT}
+                        </div>
+                    )}
+                    {this.state.notice && (
+                        <div
+                            style={{
+                                fontSize: 12, color: '#1f7a3d', background: '#eaf7ee',
+                                border: '1px solid #bfe5cb', borderRadius: 6,
+                                padding: '6px 8px', marginBottom: 12
+                            }}
+                        >
+                            {this.state.notice}
                         </div>
                     )}
 
@@ -850,6 +914,21 @@ export class ProjectStoreModal extends React.Component {
                     >
                         {isStart ? (
                             <React.Fragment>
+                                {this.state.allowStartCancel ? (
+                                    <button
+                                        type="button"
+                                        disabled={this.state.busy}
+                                        onClick={this.cancelCreate}
+                                        style={{
+                                            padding: '8px 16px', fontSize: 13, borderRadius: 6,
+                                            border: '1px solid #c9cdd4', background: '#fff',
+                                            color: '#575e75',
+                                            cursor: this.state.busy ? 'default' : 'pointer'
+                                        }}
+                                    >
+                                        {T_CANCEL}
+                                    </button>
+                                ) : null}
                                 <button
                                     type="button"
                                     disabled={this.state.busy}
@@ -936,12 +1015,19 @@ export class AutoSaver extends React.Component {
         this.state = {status: 'idle', at: 0, error: null};
         this.timer = null;
         this.tick = this.tick.bind(this);
+        this.handleQuickSave = this.handleQuickSave.bind(this);
     }
     componentDidMount () {
         this.timer = setInterval(this.tick, AUTOSAVE_INTERVAL_MS);
+        // 顶栏「保存项目」在项目已命名时走这里：不弹框，直接存一次
+        window.addEventListener('jarvis-quick-save', this.handleQuickSave);
     }
     componentWillUnmount () {
         if (this.timer) clearInterval(this.timer);
+        window.removeEventListener('jarvis-quick-save', this.handleQuickSave);
+    }
+    handleQuickSave () {
+        this.tick();
     }
     tick () {
         const vm = this.props.vm;
@@ -1000,6 +1086,16 @@ AutoSaver.propTypes = {
 // 便捷触发函数：供 menu-bar 直接调用
 export function openSaveDialog () {
     try { window.dispatchEvent(new CustomEvent('jarvis-open-save')); } catch (e) {}
+}
+
+// 新建项目：先保存当前项目再弹「给新项目命名」，所以同样交给弹窗组件处理
+export function openCreateDialog () {
+    try { window.dispatchEvent(new CustomEvent('jarvis-open-create')); } catch (e) {}
+}
+
+// 已命名项目点「保存项目」：不弹框，直接存
+export function requestQuickSave () {
+    try { window.dispatchEvent(new CustomEvent('jarvis-quick-save')); } catch (e) {}
 }
 export function openLoadDialog () {
     try { window.dispatchEvent(new CustomEvent('jarvis-open-load')); } catch (e) {}

@@ -32,6 +32,9 @@ import {
     ProjectStoreModal,
     openSaveDialog,
     openLoadDialog,
+    openCreateDialog,
+    requestQuickSave,
+    getProjectName,
     setProjectName,
     DEFAULT_PROJECT_NAME
 } from './scratch-projects.jsx';
@@ -220,23 +223,11 @@ class MenuBar extends React.Component {
         document.removeEventListener('keydown', this.handleKeyPress);
     }
     handleClickNew () {
-        // if the project is dirty, and user owns the project, we will autosave.
-        // but if they are not logged in and can't save, user should consider
-        // downloading or logging in first.
-        // Note that if user is logged in and editing someone else's project,
-        // they'll lose their work.
-        const readyToReplaceProject = this.props.confirmReadyToReplaceProject(
-            this.props.intl.formatMessage(sharedMessages.replaceProjectWarning)
-        );
+        // JARVIS 二次开发：本地项目场景不需要「替换项目」确认弹框。
+        // 新建流程交给 ProjectStoreModal：先把当前项目的最新内容存盘，
+        // 再弹出「给新项目命名」，这样不会因为一路新建把上個项目丢掉。
         this.props.onRequestCloseFile();
-        if (readyToReplaceProject) {
-            // JARVIS 二次开发：顶栏项目名徽标（ProjectNameBadge）读的是 localStorage 里的
-            // 项目名，新建项目时必须显式重置，否则会残留上一个项目的名称。
-            // 上游 Scratch 的 projectTitle 与本徽标是两套数据，改这里不影响官方逻辑。
-            setProjectName(DEFAULT_PROJECT_NAME);
-            this.props.onClickNew(this.props.canSave && this.props.canCreateNew);
-        }
-        this.props.onRequestCloseFile();
+        openCreateDialog();
     }
     handleClickRemix () {
         this.props.onClickRemix();
@@ -273,7 +264,13 @@ class MenuBar extends React.Component {
     }
     handleSaveToLocal () {
         this.props.onRequestCloseFile();
-        // JARVIS：打开「保存项目」弹窗，要求填写项目名称（统一存储，与设备无关）
+        // JARVIS：已经有项目名就直接静默保存（顶栏会显示「已自动保存 时间」）；
+        // 只有还没命名过才需要弹框填名字。
+        const name = getProjectName();
+        if (name && name !== DEFAULT_PROJECT_NAME) {
+            requestQuickSave();
+            return;
+        }
         openSaveDialog();
     }
     handleSetMode (mode) {
