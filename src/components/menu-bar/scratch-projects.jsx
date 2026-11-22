@@ -1,6 +1,10 @@
 import React from 'react';
 import PropTypes from 'prop-types';
 
+// 新建项目要从「默认空白项目」开始：这份数据由内置素材缓存在 storage 里（不走网络），
+// 和 scratch-gui 自己打开 projectId=0 时用的是同一份。
+import projectData from '../../lib/default-project/project-data';
+
 // JARVIS 二次开发：项目统一存储
 // ----------------------------------------------------------------------------
 // 设计目标：
@@ -112,6 +116,43 @@ function saveProjectAsName (vm, name) {
                     return res.file || '';
                 });
         });
+}
+
+/* 新建项目必须真的从空白开始。
+ *
+ * 之前的实现是「确认名字后直接把当前 VM 存成新文件名」——而新建流程从没有清过画布，
+ * 所以新项目 = 上一个项目的整份拷贝（角色、脚本、造型全在），
+ * 结果和项目列表里的「复制」功能变成了同一个结果，孩子会以为脚本是自己带过来的。
+ *
+ * 这里改成先载入默认空白项目（舞台 + 一只空小猫，零积木），再存成新名字。
+ * 默认项目的素材由内置缓存提供（storage.cacheDefaultProject），不依赖外网，
+ * 断网也能新建。 */
+const DEFAULT_PROJECT_LABELS = {
+    // 角色/造型/背景的中文默认名 + 序号占位符（否则会原样显示 Sprite{index}）
+    'gui.sharedMessages.sprite': '角色{index}',
+    'gui.sharedMessages.costume': '造型{index}',
+    'gui.sharedMessages.backdrop': '背景{index}',
+    'gui.sharedMessages.pop': '音效',
+    'gui.defaultProject.meow': '喵',
+    'gui.defaultProject.variable': '我的变量'
+};
+function defaultProjectTranslator (msgObj, values) {
+    const id = msgObj && msgObj.id;
+    let text = (id && DEFAULT_PROJECT_LABELS[id]) || (msgObj && msgObj.defaultMessage) || '';
+    if (values) {
+        Object.keys(values).forEach(k => {
+            text = text.split('{' + k + '}').join(String(values[k]));
+        });
+    }
+    return text;
+}
+function resetToDefaultProject (vm) {
+    if (!vm || !vm.loadProject) {
+        return Promise.reject(new Error('编辑器尚未就绪，请稍候再试'));
+    }
+    return Promise.resolve()
+        .then(() => vm.loadProject(projectData(defaultProjectTranslator)))
+        .then(() => true);
 }
 
 export const PROJECT_NAME_KEY = 'jarvis.scratch.projectName';
@@ -449,7 +490,11 @@ export class ProjectStoreModal extends React.Component {
         const isStart = this.state.mode === 'start';
         this.setState({busy: true, error: null});
         SAVE_IN_FLIGHT = true;
-        saveProjectAsName(vm, name)
+        // 新建（start 弹窗里的「新建并开始」）：先重置成默认空白项目再存盘。
+        // 「保存项目」弹窗里的保存不改画布，直接存当前内容。
+        const prep = isStart ? resetToDefaultProject(vm) : Promise.resolve(true);
+        prep
+            .then(() => saveProjectAsName(vm, name))
             .then(() => {
                 SAVE_IN_FLIGHT = false;
                 markProjectReady(true);
