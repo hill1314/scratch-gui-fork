@@ -439,8 +439,27 @@ export default LivePresenter;
 // 打开就一直跟随；地址形如 /scratch/player.html?jarvis=1&live=main，另有短入口
 // /scratch/watch 由网关 302 过来。
 
-export const LIVE_AUTO_SID = 'main';
 export const LIVE_AUTO_PUSH_INTERVAL = 5000;
+
+const LIVE_SID_KEY = 'jarvis.scratch.liveSid';
+
+/**
+ * 每个编辑器实例（每个标签页）一个会话 id。
+ * 早先用固定的 'main'：多台机器同时编辑会互相覆盖，观众也没法区分是谁。
+ * 放 sessionStorage：刷新页面会换新 id，但同一台机器的多个标签页互不干扰。
+ */
+export function getLiveSid () {
+    try {
+        let sid = window.sessionStorage.getItem(LIVE_SID_KEY);
+        if (!sid || !/^[A-Za-z0-9_-]{4,64}$/.test(sid)) {
+            sid = 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+            window.sessionStorage.setItem(LIVE_SID_KEY, sid);
+        }
+        return sid;
+    } catch (e) {
+        return 'main';
+    }
+}
 
 const T_WATCH = '观看';
 const T_WATCH_ADDR = '观看地址（固定不变，别人打开就能看）';
@@ -448,9 +467,11 @@ const T_WATCH_HINT = '不用手动开始：这边编辑的内容会自动同步�
 const T_WATCH_OPEN = '打开观看页';
 const T_WATCH_OPEN_POPUP = '浏览器拦截了新窗口，请允许弹出窗口或手动复制地址。';
 
+// 短入口：网关按「最近还在推帧的会话」动态跳转，所以不管谁在编辑，
+// 这个地址打开都有画面，不用跟着 pid/sid 变。
 const watchAutoUrl = function () {
     const origin = (typeof location !== 'undefined' && location.origin) || '';
-    return `${origin}/scratch/player.html?jarvis=1&live=${LIVE_AUTO_SID}`;
+    return `${origin}/scratch/watch`;
 };
 
 /**
@@ -510,8 +531,9 @@ export class LiveAutoPublisher extends React.Component {
                     credentials: 'same-origin',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({
-                        sid: LIVE_AUTO_SID,
-                        title: this.props.title || name,
+                        sid: getLiveSid(),
+                        // 项目名优先：观众在列表里看到的是「哈2」而不是笼统的「Scratch作品」
+                        title: name || this.props.title || '',
                         data
                     })
                 }).then(r => r.json());

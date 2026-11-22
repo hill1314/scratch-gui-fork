@@ -1,6 +1,7 @@
 import React from 'react';
 import PropTypes from 'prop-types';
 
+import {getLiveSid} from './scratch-live.jsx';
 // 新建项目要从「默认空白项目」开始：这份数据由内置素材缓存在 storage 里（不走网络），
 // 和 scratch-gui 自己打开 projectId=0 时用的是同一份。
 import projectData from '../../lib/default-project/project-data';
@@ -69,6 +70,19 @@ const T_RELOAD = '刷新列表';
 const T_NEW_AUTOSAVED_PREFIX = '原项目「';
 const T_NEW_AUTOSAVED_SUFFIX = '」已自动保存。';
 const T_NEW_NEED_NAME = '给新项目起个名字再开始，避免和已有项目混在一起。';
+// 「观看他人」入口
+const T_ENTRY_OPEN = '打开项目';
+const T_ENTRY_WATCH = '观看他人';
+const T_ENTRY_HINT = '看别人正在改什么：舞台和脚本都会实时跟着他的画面走。';
+const T_WATCH_TITLE = '观看他人';
+const T_WATCH_HINT = '下面是当前在线的编辑器，选一个进去围观（只读，不会影响对方）。';
+const T_WATCH_EMPTY = '现在没有别人在编辑。让其他设备打开这个编辑器，或稍后点刷新列表。';
+const T_WATCH_JOIN = '围观 ▸';
+const T_WATCH_SELF = '本机';
+const T_WATCH_RELOAD = '刷新列表';
+const T_WATCH_BACK = '返回';
+const T_WATCH_LOADING = '读取在线列表…';
+const T_WATCH_FAIL = '读取失败：';
 // 自动保存（每 10 秒一次，静默覆盖同名文件）
 export const AUTOSAVE_INTERVAL_MS = 10000;
 const T_AUTO_SAVING = '保存中…';
@@ -315,6 +329,9 @@ export class ProjectStoreModal extends React.Component {
         this.state = {
             mode: null,          // null | 'start' | 'save' | 'load'
             notice: '',          // 弹窗顶部的绿色提示（例如「原项目已自动保存」）
+            watchList: [],       // 「观看他人」：当前在线的编辑器会话
+            watchLoading: false,
+            watchError: null,
             allowStartCancel: false, // 「新建」进到命名弹窗后允许取消（首次进站仍必须选项目）
             startSettled: false, // 启动选择弹窗是否已经处理过（选过项目后不再自动弹）
             name: '',
@@ -334,6 +351,10 @@ export class ProjectStoreModal extends React.Component {
         this.openStart = this.openStart.bind(this);
         this.openCreate = this.openCreate.bind(this);
         this.cancelCreate = this.cancelCreate.bind(this);
+        this.openWatchList = this.openWatchList.bind(this);
+        this.fetchWatchList = this.fetchWatchList.bind(this);
+        this.doWatch = this.doWatch.bind(this);
+        this.scrollToOpenList = this.scrollToOpenList.bind(this);
         this.openSave = this.openSave.bind(this);
         this.openLoad = this.openLoad.bind(this);
         this.close = this.close.bind(this);
@@ -434,6 +455,47 @@ export class ProjectStoreModal extends React.Component {
         }
         this.setState({mode: null, allowStartCancel: false, notice: '', error: null, busy: false});
     }
+    // ---------- 观看他人 ----------
+    // 列出所有正在推帧的编辑器（每个标签页一个会话），点「围观」进入只读跟随。
+    openWatchList () {
+        this.setState({
+            mode: 'watch', watchList: [], watchLoading: true, watchError: null, error: null
+        });
+        this.fetchWatchList();
+    }
+    fetchWatchList () {
+        this.setState({watchLoading: true, watchError: null});
+        fetch('/api/scratch/live', {credentials: 'same-origin'})
+            .then(r => r.json())
+            .then(j => {
+                const list = (j && j.active) || [];
+                this.setState({watchList: list, watchLoading: false});
+            })
+            .catch(err => this.setState({
+                watchLoading: false, watchError: (err && err.message) || String(err)
+            }));
+    }
+    // 点「打开项目」：把弹窗滚到下面的已有项目列表（列表本来就在这一屏里）
+    scrollToOpenList () {
+        try {
+            const el = Array.from(document.querySelectorAll('div')).find(
+                e => e.textContent.trim() === T_START_OPEN_SECTION && e.children.length === 0
+            );
+            if (el) el.scrollIntoView({block: 'start', behavior: 'smooth'});
+        } catch (e) {}
+    }
+    doWatch (item) {
+        const sid = item && item.sid;
+        if (!sid) return;
+        // 交给 LiveWatchSession：它会停掉本页的自动保存/推送并开始跟帧
+        try {
+            window.dispatchEvent(new CustomEvent('jarvis-watch-session', {
+                detail: {sid, title: item.title || '', client: item.client || ''}
+            }));
+        } catch (e) {}
+        this.setState({mode: null, startSettled: true, notice: '', error: null});
+    }
+
     openSave () {
         this.setState({mode: 'save', name: getProjectName(), error: null, busy: false});
     }
@@ -640,6 +702,7 @@ export class ProjectStoreModal extends React.Component {
             if (!this.state.mode) return null;
         const isStart = this.state.mode === 'start';
         const isSave = this.state.mode === 'save';
+        const isWatch = this.state.mode === 'watch';
         const overlay = {
             position: 'fixed', left: 0, top: 0, right: 0, bottom: 0,
             background: 'rgba(0,0,0,.45)', zIndex: 9999,
@@ -654,16 +717,45 @@ export class ProjectStoreModal extends React.Component {
             <div
                 style={overlay}
                 onMouseDown={e => {
-                    if (e.target === e.currentTarget && !isStart) this.close();
+                    if (e.target === e.currentTarget && !isStart && !isWatch) this.close();
                 }}
             >
                 <div style={card}>
                     <div style={{fontSize: 16, fontWeight: 700, marginBottom: isStart ? 4 : 14}}>
-                        {isStart ? T_START_TITLE : (isSave ? T_SAVE_TITLE : T_LOAD_TITLE)}
+                        {isWatch ? T_WATCH_TITLE :
+                            (isStart ? T_START_TITLE : (isSave ? T_SAVE_TITLE : T_LOAD_TITLE))}
                     </div>
                     {isStart && (
-                        <div style={{fontSize: 12, color: '#575e75', marginBottom: 14}}>
+                        <div style={{fontSize: 12, color: '#575e75', marginBottom: 12}}>
                             {T_START_HINT}
+                        </div>
+                    )}
+                    {isStart && (
+                        <div style={{display: 'flex', gap: 8, marginBottom: 14}}>
+                            <button
+                                type="button"
+                                onClick={this.scrollToOpenList}
+                                style={{
+                                    flex: 1, padding: '9px 12px', fontSize: 13, fontWeight: 700,
+                                    fontFamily: 'inherit', borderRadius: 8,
+                                    border: '1px solid #c9cdd4', background: '#fff',
+                                    color: '#3b3b3b', cursor: 'pointer'
+                                }}
+                            >
+                                {T_ENTRY_OPEN}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={this.openWatchList}
+                                style={{
+                                    flex: 1, padding: '9px 12px', fontSize: 13, fontWeight: 700,
+                                    fontFamily: 'inherit', borderRadius: 8,
+                                    border: '1px solid #cfdcff', background: '#f4f8ff',
+                                    color: '#4c97ff', cursor: 'pointer'
+                                }}
+                            >
+                                {T_ENTRY_WATCH}
+                            </button>
                         </div>
                     )}
                     {this.state.notice && (
@@ -678,7 +770,73 @@ export class ProjectStoreModal extends React.Component {
                         </div>
                     )}
 
-                    {isSave ? (
+                    {isWatch ? (
+                        <div>
+                            <div style={{fontSize: 12, color: '#575e75', marginBottom: 10}}>
+                                {T_WATCH_HINT}
+                            </div>
+                            {this.state.watchLoading && (
+                                <div style={{fontSize: 12, color: '#969da5', padding: '8px 0'}}>
+                                    {T_WATCH_LOADING}
+                                </div>
+                            )}
+                            {this.state.watchError && (
+                                <div style={{fontSize: 12, color: '#d93025', marginBottom: 8}}>
+                                    {T_WATCH_FAIL}{this.state.watchError}
+                                </div>
+                            )}
+                            {!this.state.watchLoading && !this.state.watchError &&
+                                this.state.watchList.length === 0 && (
+                                <div style={{fontSize: 12, color: '#969da5', padding: '8px 0'}}>
+                                    {T_WATCH_EMPTY}
+                                </div>
+                            )}
+                            {this.state.watchList.map((it) => {
+                                const self = it.sid === getLiveSid();
+                                return (
+                                    <div
+                                        key={it.sid}
+                                        style={{
+                                            display: 'flex', alignItems: 'center',
+                                            justifyContent: 'space-between', gap: 10,
+                                            padding: '8px 10px', marginBottom: 6,
+                                            border: '1px solid #e3e6ea', borderRadius: 7,
+                                            background: self ? '#f7f9fc' : '#fff'
+                                        }}
+                                    >
+                                        <div style={{minWidth: 0}}>
+                                            <div style={{
+                                                fontSize: 13, fontWeight: 700,
+                                                whiteSpace: 'nowrap', overflow: 'hidden',
+                                                textOverflow: 'ellipsis'
+                                            }}>
+                                                {it.title || '未命名项目'}
+                                                {self ? `（${T_WATCH_SELF}）` : ''}
+                                            </div>
+                                            <div style={{fontSize: 11, color: '#969da5'}}>
+                                                {fmtClient(it.client) + ' · ' + fmtAgo(it.updated)}
+                                            </div>
+                                        </div>
+                                        <span
+                                            role="button"
+                                            tabIndex={0}
+                                            onClick={() => this.doWatch(it)}
+                                            onKeyDown={e => {
+                                                if (e.key === 'Enter' || e.key === ' ') this.doWatch(it);
+                                            }}
+                                            style={{
+                                                fontSize: 12, fontWeight: 700,
+                                                color: '#4c97ff', cursor: 'pointer',
+                                                whiteSpace: 'nowrap'
+                                            }}
+                                        >
+                                            {T_WATCH_JOIN}
+                                        </span>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    ) : isSave ? (
                         <div>
                             <label
                                 style={{
@@ -1013,6 +1171,35 @@ export class ProjectStoreModal extends React.Component {
                                     {this.state.busy ? T_START_CREATING : T_START_NEW_BTN}
                                 </button>
                             </React.Fragment>
+                        ) : isWatch ? (
+                            <React.Fragment>
+                                <button
+                                    type="button"
+                                    onClick={() => this.setState({
+                                        mode: 'start', watchList: [], watchError: null, watchLoading: false
+                                    })}
+                                    style={{
+                                        padding: '8px 16px', fontSize: 13, borderRadius: 6,
+                                        border: '1px solid #c9cdd4', background: '#fff',
+                                        color: '#575e75', cursor: 'pointer'
+                                    }}
+                                >
+                                    {T_WATCH_BACK}
+                                </button>
+                                <button
+                                    type="button"
+                                    disabled={this.state.watchLoading}
+                                    onClick={this.fetchWatchList}
+                                    style={{
+                                        padding: '8px 16px', fontSize: 13, borderRadius: 6,
+                                        border: '1px solid #c9cdd4', background: '#fff',
+                                        color: '#575e75',
+                                        cursor: this.state.watchLoading ? 'default' : 'pointer'
+                                    }}
+                                >
+                                    {T_WATCH_RELOAD}
+                                </button>
+                            </React.Fragment>
                         ) : (
                             <React.Fragment>
                                 <button
@@ -1057,6 +1244,23 @@ ProjectStoreModal.propTypes = {
 // ============================ 自动保存 ============================
 // 编辑过程中每 10 秒把当前画布覆盖保存到「当前项目名」对应的 .sb3。
 // 只有已经选定项目（项目名不是「未命名」）才落盘，避免把没命名的草稿写进统一目录。
+// 「观看他人」列表里的相对时间：刚刚 / N 秒前 / N 分钟前
+function fmtAgo (ts) {
+    const sec = Math.max(0, Math.floor(Date.now() / 1000 - Number(ts || 0)));
+    if (sec < 5) return '刚刚';
+    if (sec < 60) return sec + ' 秒前';
+    if (sec < 3600) return Math.floor(sec / 60) + ' 分钟前';
+    return Math.floor(sec / 3600) + ' 小时前';
+}
+
+// 同机另一个标签页的 client 是 ::1 / 127.0.0.1，对观众没意义，统一说「本机」
+function fmtClient (c) {
+    const v = String(c || '').trim();
+    if (!v) return '未知设备';
+    if (/^(::1|::ffff:127\.0\.0\.1|127\.0\.0\.1|localhost)$/i.test(v)) return '本机';
+    return v;
+}
+
 function fmtClock (ms) {
     try {
         const d = new Date(ms);

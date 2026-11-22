@@ -39,6 +39,7 @@ import {
     DEFAULT_PROJECT_NAME
 } from './scratch-projects.jsx';
 import {LiveWatchButton, LiveAutoPublisher} from './scratch-live.jsx';
+import LiveWatchSession from './scratch-watch-live.jsx';
 
 import {openTipsLibrary, openDebugModal} from '../../reducers/modals';
 import {setPlayer} from '../../reducers/mode';
@@ -432,6 +433,8 @@ class MenuBar extends React.Component {
                         <ProjectNameBadge />
                         {/* JARVIS：编辑过程中每 10 秒自动保存到当前项目（显示最近保存时间） */}
                         <AutoSaver vm={this.props.vm} />
+                        {/* JARVIS：观看他人——在完整编辑器里只读跟随别人正在改的项目 */}
+                        <LiveWatchSession vm={this.props.vm} />
                         {/* JARVIS：常驻把当前项目推给观看端，别人打开固定地址就能看（无需开始演示） */}
                         {(this.props.canManageFiles) && (
                             <LiveAutoPublisher
@@ -443,18 +446,21 @@ class MenuBar extends React.Component {
                         {(this.props.canManageFiles) && (
                             <React.Fragment>
                                 <div
+                                    data-jarvis-action="1"
                                     className={classNames(styles.menuBarItem, styles.hoverable)}
                                     onClick={this.handleClickNew}
                                 >
                                     <span className={styles.mainActionLabel}>{NEW_PROJECT_LABEL}</span>
                                 </div>
                                 <div
+                                    data-jarvis-action="1"
                                     className={classNames(styles.menuBarItem, styles.hoverable)}
                                     onClick={this.handleSaveToLocal}
                                 >
                                     <span className={styles.mainActionLabel}>{SAVE_TO_LOCAL_LABEL}</span>
                                 </div>
                                 <div
+                                    data-jarvis-action="1"
                                     className={classNames(styles.menuBarItem, styles.hoverable)}
                                     onClick={openLoadDialog}
                                 >
@@ -462,6 +468,7 @@ class MenuBar extends React.Component {
                                 </div>
                                 {/* 原「项目」下拉里的两项，现在直接和上面三项平级铺在顶栏上 */}
                                 <div
+                                    data-jarvis-action="1"
                                     className={classNames(styles.menuBarItem, styles.hoverable)}
                                     onClick={this.props.onStartSelectingFileUpload}
                                 >
